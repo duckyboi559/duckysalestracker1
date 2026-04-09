@@ -32,10 +32,6 @@ const baconPriceInput = document.getElementById("baconPrice");
 const quackPriceInput = document.getElementById("quackPrice");
 const friesPriceInput = document.getElementById("friesPrice");
 
-baconPriceInput.value = data.bacon.price;
-quackPriceInput.value = data.quack.price;
-friesPriceInput.value = data.fries.price;
-
 function formatMoney(amount) {
   return `$${amount.toFixed(2)}`;
 }
@@ -82,6 +78,10 @@ function updateScreen() {
   grandTotalEl.textContent = formatMoney(getGrandTotal());
   totalItemsEl.textContent = getTotalItems();
   todayDateEl.textContent = getTodayLabel();
+
+  baconPriceInput.value = data.bacon.price;
+  quackPriceInput.value = data.quack.price;
+  friesPriceInput.value = data.fries.price;
 }
 
 function renderHistory() {
