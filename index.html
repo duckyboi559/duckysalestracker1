@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ducky's Sales Tracker</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app">
+    <h1>Ducky’s Street Dogs</h1>
+    <p class="subtitle">Sales Tracker</p>
+
+    <div class="item-card">
+        <h2>Bacon Dog</h2>
+        <div class="price-line">Price: $<input type="number" id="baconPrice" value="5" min="0" step="0.01"></div>
+        <div class="count" id="baconCount">0</div>
+        <div class="button-row">
+            <button onclick="changeCount('bacon', -1)">-1</button>
+            <button onclick="changeCount('bacon', 1)">+1</button>
+        </div>
+        <p class="item-total">Sales: <span id="baconTotal">$0.00</span></p>
+    </div>
+
+    <div class="item-card">
+        <h2>Quack Attack</h2>
+        <div class="price-line">Price: $<input type="number" id="quackPrice" value="6" min="0" step="0.01"></div>
+        <div class="count" id="quackCount">0</div>
+        <div class="button-row">
+            <button onclick="changeCount('quack', -1)">-1</button>
+            <button onclick="changeCount('quack', 1)">+1</button>
+        </div>
+        <p class="item-total">Sales: <span id="quackTotal">$0.00</span></p>
+    </div>
+
+    <div class="item-card">
+        <h2>Asada Fries</h2>
+        <div class="price-line">Price: $<input type="number" id="friesPrice" value="10" min="0" step="0.01"></div>
+        <div class="count" id="friesCount">0</div>
+        <div class="button-row">
+            <button onclick="changeCount('fries', -1)">-1</button>
+            <button onclick="changeCount('fries', 1)">+1</button>
+        </div>
+        <p class="item-total">Sales: <span id="friesTotal">$0.00</span></p>
+    </div>
+
+    <div class="summary-card">
+        <h2>Grand Total</h2>
+        <div class="grand-total" id="grandTotal">$0.00</div>
+    </div>
+
+    <div class="summary-card">
+        <h2>Total Items Sold</h2>
+        <div class="grand-total" id="totalItems">0</div>
+    </div>
+
+    <div class="summary-card">
+        <h2>Last Updated</h2>
+        <p id="lastUpdated">Not yet</p>
+    </div>
+
+    <button class="reset-btn" onclick="resetDay()">Reset Day</button>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
