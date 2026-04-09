@@ -1,75 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ducky's Sales Tracker</title>
-  <link rel="stylesheet" href="style.css" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Pancake Tracker</title>
+<link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <div class="app">
-    <h1>Ducky’s Street Dogs</h1>
-    <p class="subtitle">Sales Tracker</p>
 
-    <div class="item-card">
-      <h2>Bacon Dog</h2>
-      <div class="price-line">Price: $<input type="number" id="baconPrice" value="5" min="0" step="0.01"></div>
-      <div class="count" id="baconCount">0</div>
-      <div class="button-row">
-        <button onclick="changeCount('bacon', -1)">-1</button>
-        <button onclick="changeCount('bacon', 1)">+1</button>
-      </div>
-      <p class="item-total">Sales: <span id="baconTotal">$0.00</span></p>
-    </div>
+<div class="app">
 
-    <div class="item-card">
-      <h2>Quack Attack</h2>
-      <div class="price-line">Price: $<input type="number" id="quackPrice" value="6" min="0" step="0.01"></div>
-      <div class="count" id="quackCount">0</div>
-      <div class="button-row">
-        <button onclick="changeCount('quack', -1)">-1</button>
-        <button onclick="changeCount('quack', 1)">+1</button>
-      </div>
-      <p class="item-total">Sales: <span id="quackTotal">$0.00</span></p>
-    </div>
+<h1>Mini Pancakes</h1>
+<p class="subtitle">Tap Counter</p>
 
-    <div class="item-card">
-      <h2>Asada Fries</h2>
-      <div class="price-line">Price: $<input type="number" id="friesPrice" value="10" min="0" step="0.01"></div>
-      <div class="count" id="friesCount">0</div>
-      <div class="button-row">
-        <button onclick="changeCount('fries', -1)">-1</button>
-        <button onclick="changeCount('fries', 1)">+1</button>
-      </div>
-      <p class="item-total">Sales: <span id="friesTotal">$0.00</span></p>
-    </div>
+<div class="grid">
 
-    <div class="summary-card">
-      <h2>Grand Total</h2>
-      <div class="grand-total" id="grandTotal">$0.00</div>
-    </div>
+<div class="tile" onclick="changeCount('stack20',1)">
+<h2>Stack’d 20</h2>
+<p>$10</p>
+<div class="count" id="stack20Count">0</div>
+</div>
 
-    <div class="summary-card">
-      <h2>Total Items Sold</h2>
-      <div class="grand-total" id="totalItems">0</div>
-    </div>
+<div class="tile" onclick="changeCount('stack25',1)">
+<h2>Stack’d 25</h2>
+<p>$12</p>
+<div class="count" id="stack25Count">0</div>
+</div>
 
-    <div class="summary-card">
-      <h2>Today's Date</h2>
-      <p id="todayDate"></p>
-    </div>
+<div class="tile" onclick="changeCount('stack30',1)">
+<h2>Stack’d 30</h2>
+<p>$15</p>
+<div class="count" id="stack30Count">0</div>
+</div>
 
-    <div class="action-row">
-      <button class="save-btn" onclick="saveDay()">Save Day</button>
-      <button class="reset-btn" onclick="resetDay()">Reset Day</button>
-    </div>
+<div class="tile" onclick="changeCount('your20',1)">
+<h2>Your Way 20</h2>
+<p>$8</p>
+<div class="count" id="your20Count">0</div>
+</div>
 
-    <div class="summary-card">
-      <h2>Previous Days</h2>
-      <div id="historyList" class="history-list"></div>
-    </div>
-  </div>
+<div class="tile" onclick="changeCount('your25',1)">
+<h2>Your Way 25</h2>
+<p>$10</p>
+<div class="count" id="your25Count">0</div>
+</div>
 
-  <script src="script.js"></script>
+<div class="tile" onclick="changeCount('your30',1)">
+<h2>Your Way 30</h2>
+<p>$12</p>
+<div class="count" id="your30Count">0</div>
+</div>
+
+</div>
+
+<div class="totalBox">
+<h2>Total</h2>
+<div id="grandTotal">$0</div>
+</div>
+
+<div class="dateBox">
+Today: <span id="todayDate"></span>
+</div>
+
+<div class="buttons">
+<button onclick="saveDay()" class="save">Save Day</button>
+<button onclick="resetDay()" class="reset">Reset</button>
+</div>
+
+<div class="history">
+<h2>Previous Days</h2>
+<div id="historyList"></div>
+</div>
+
+</div>
+
+<script src="script.js"></script>
+
 </body>
 </html>
