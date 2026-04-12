@@ -1,81 +1,137 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mini Pancake Tracker</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Adrian Order Builder</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
+  <div class="app">
+    <header class="hero">
+      <h1>Adrian Order Builder</h1>
+      <p class="subtitle">Build each order step by step, then checkout</p>
+    </header>
 
-<div class="app">
+    <section class="top-summary">
+      <div class="card mini-card">
+        <h2>Order #</h2>
+        <div class="big-number" id="orderNumber">1</div>
+      </div>
 
-<h1>Mini Pancakes</h1>
-<p class="subtitle">Tap Counter</p>
+      <div class="card mini-card">
+        <h2>Orders Today</h2>
+        <div class="big-number" id="ordersTodayCount">0</div>
+      </div>
+    </section>
 
-<div class="grid">
+    <section class="layout">
+      <div class="left-panel">
+        <div class="card">
+          <h2>Choose Item</h2>
+          <div class="category-grid">
+            <button type="button" class="category-btn hotdog-btn" onclick="startBuilder('hotdog')">$5 Hotdog</button>
+            <button type="button" class="category-btn quack-btn" onclick="startBuilder('quack')">$6 Quack Attack</button>
+            <button type="button" class="category-btn fries-btn" onclick="startBuilder('fries')">$10 Asada Fries</button>
+            <button type="button" class="category-btn cheeto-btn" onclick="startBuilder('cheetoFries')">$13 Cheeto Asada Fries</button>
+          </div>
+        </div>
 
-<div class="tile" onclick="changeCount('stack20',1)">
-<h2>Stack’d 20</h2>
-<p>$10</p>
-<div class="count" id="stack20Count">0</div>
-</div>
+        <div class="card">
+          <h2>Builder</h2>
+          <div id="builderStage" class="builder-stage">
+            <p>Pick an item to begin.</p>
+          </div>
+        </div>
 
-<div class="tile" onclick="changeCount('stack25',1)">
-<h2>Stack’d 25</h2>
-<p>$12</p>
-<div class="count" id="stack25Count">0</div>
-</div>
+        <div class="card">
+          <h2>Review Before Add</h2>
+          <div id="reviewCard" class="review-card">
+            <p>No item being built yet.</p>
+          </div>
 
-<div class="tile" onclick="changeCount('stack30',1)">
-<h2>Stack’d 30</h2>
-<p>$15</p>
-<div class="count" id="stack30Count">0</div>
-</div>
+          <div class="action-row">
+            <button type="button" class="secondary-btn" onclick="clearBuilder()">Clear Builder</button>
+            <button type="button" class="primary-btn" onclick="addBuiltItemToOrder()">Add to Order</button>
+          </div>
+        </div>
+      </div>
 
-<div class="tile" onclick="changeCount('your20',1)">
-<h2>Your Way 20</h2>
-<p>$8</p>
-<div class="count" id="your20Count">0</div>
-</div>
+      <div class="right-panel">
+        <div class="card">
+          <h2>Current Order</h2>
+          <div id="orderList" class="order-list">
+            <p>No items in order yet.</p>
+          </div>
 
-<div class="tile" onclick="changeCount('your25',1)">
-<h2>Your Way 25</h2>
-<p>$10</p>
-<div class="count" id="your25Count">0</div>
-</div>
+          <div class="totals-box">
+            <div class="line">
+              <span>Order Total</span>
+              <strong id="orderTotal">$0.00</strong>
+            </div>
+          </div>
 
-<div class="tile" onclick="changeCount('your30',1)">
-<h2>Your Way 30</h2>
-<p>$12</p>
-<div class="count" id="your30Count">0</div>
-</div>
+          <div class="action-row">
+            <button type="button" class="pay-btn cash-btn" onclick="checkoutOrder('cash')">Pay Cash</button>
+            <button type="button" class="pay-btn digital-btn" onclick="checkoutOrder('digital')">Pay Digital</button>
+          </div>
 
-</div>
+          <div class="action-row">
+            <button type="button" class="pay-btn split-btn" onclick="checkoutSplitHalf()">Split 50/50</button>
+            <button type="button" class="pay-btn split-custom-btn" onclick="checkoutSplitCustom()">Split Custom</button>
+          </div>
 
-<div class="totalBox">
-<h2>Total</h2>
-<div id="grandTotal">$0</div>
-</div>
+          <div class="action-row">
+            <button type="button" class="pay-btn cancel-btn" onclick="clearOrder()">Clear Order</button>
+          </div>
+        </div>
 
-<div class="dateBox">
-Today: <span id="todayDate"></span>
-</div>
+        <div class="card">
+          <h2>Last Paid Order</h2>
+          <div id="lastOrderCard" class="last-order-card">
+            <p>No paid orders yet.</p>
+          </div>
 
-<div class="buttons">
-<button onclick="saveDay()" class="save">Save Day</button>
-<button onclick="resetDay()" class="reset">Reset</button>
-</div>
+          <div class="action-row">
+            <button type="button" class="primary-btn" onclick="repeatLastOrder()">Repeat Last Order</button>
+          </div>
+        </div>
 
-<div class="history">
-<h2>Previous Days</h2>
-<div id="historyList"></div>
-</div>
+        <div class="card">
+          <h2>Totals Today</h2>
+          <div class="summary-grid">
+            <div class="summary-item"><span>Cash</span><strong id="cashTotal">$0.00</strong></div>
+            <div class="summary-item"><span>Digital</span><strong id="digitalTotal">$0.00</strong></div>
+            <div class="summary-item"><span>Total</span><strong id="dayTotal">$0.00</strong></div>
+            <div class="summary-item"><span>Items Sold</span><strong id="itemsSoldTotal">0</strong></div>
+          </div>
+        </div>
 
-</div>
+        <div class="card">
+          <h2>Day Actions</h2>
+          <div class="action-row">
+            <button type="button" class="primary-btn" onclick="saveDay()">Save Day</button>
+            <button type="button" class="secondary-btn" onclick="resetDay()">Reset Day</button>
+          </div>
+        </div>
 
-<script src="script.js"></script>
+        <div class="card">
+          <h2>Today’s Paid Orders</h2>
+          <div id="todayOrders" class="today-orders">
+            <p>No paid orders yet.</p>
+          </div>
+        </div>
 
+        <div class="card">
+          <h2>Previous Days</h2>
+          <div id="previousDays" class="today-orders">
+            <p>No saved days yet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
