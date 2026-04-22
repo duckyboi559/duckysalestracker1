@@ -3,201 +3,197 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Adrian Hotdog Live POS</title>
+  <title>Ducky's Street Dogs Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Luckiest+Guy&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app">
-    <section id="mainScreen">
-      <header class="hero">
-        <h1>Adrian Hotdog Live POS</h1>
-        <p class="subtitle">Open → Paid → Handed Out</p>
-      </header>
+  <div class="page-bg"></div>
 
-      <div class="nav-row">
-        <button type="button" class="nav-btn" onclick="goHome()">Main Screen</button>
-        <button type="button" class="nav-btn" onclick="goHistory()">Saved Previous Days</button>
+  <main class="app-shell">
+    <header class="topbar">
+      <img src="images/logo.png" alt="Ducky's Street Dogs Logo" class="brand-logo" />
+      <h1>Ducky's Street Dogs</h1>
+      <div class="date-wrap glass-card">
+        <label for="workDate">Work Date</label>
+        <input type="date" id="workDate" />
+      </div>
+    </header>
+
+    <!-- HOME -->
+    <section id="screen-home" class="screen active">
+      <div class="home-grid">
+        <button class="big-nav glass-card" data-go="build">➕ New Order</button>
+        <button class="big-nav glass-card" data-go="open">📋 Open Orders</button>
+        <button class="big-nav glass-card" data-go="handed">✅ Handed Out</button>
+        <button class="big-nav glass-card" data-go="stats">📊 Stats / History</button>
       </div>
 
-      <section class="summary-grid top-grid">
-        <div class="card">
-          <h3>Next Order #</h3>
-          <div class="big-number" id="nextOrderNumber">1</div>
+      <section class="summary-bar glass-card">
+        <div class="summary-box">
+          <div class="label">Open Orders</div>
+          <div class="value" id="homeOpenCount">0</div>
         </div>
-        <div class="card">
-          <h3>Open Orders</h3>
-          <div class="big-number" id="openCount">0</div>
+        <div class="summary-box">
+          <div class="label">Completed Today</div>
+          <div class="value" id="homeCompletedCount">0</div>
         </div>
-        <div class="card">
-          <h3>Paid Orders</h3>
-          <div class="big-number" id="paidCount">0</div>
+        <div class="summary-box">
+          <div class="label">Today Sales</div>
+          <div class="value" id="homeTodaySales">$0.00</div>
         </div>
-        <div class="card">
-          <h3>Handed Out</h3>
-          <div class="big-number" id="handedCount">0</div>
-        </div>
-      </section>
-
-      <section class="summary-grid">
-        <div class="card">
-          <h3>Cash</h3>
-          <div class="big-number money" id="cashTotal">$0.00</div>
-        </div>
-        <div class="card">
-          <h3>Cash App</h3>
-          <div class="big-number money" id="cashAppTotal">$0.00</div>
-        </div>
-        <div class="card">
-          <h3>Apple Pay</h3>
-          <div class="big-number money" id="applePayTotal">$0.00</div>
-        </div>
-        <div class="card">
-          <h3>Square</h3>
-          <div class="big-number money" id="squareTotal">$0.00</div>
-        </div>
-      </section>
-
-      <section class="summary-grid">
-        <div class="card">
-          <h3>Total Sales</h3>
-          <div class="big-number money" id="dayTotal">$0.00</div>
-        </div>
-        <div class="card">
-          <h3>Top Seller</h3>
-          <div class="big-number small-number" id="topSeller">—</div>
-        </div>
-        <div class="card">
-          <h3>Items Sold</h3>
-          <div class="big-number" id="itemsSoldCount">0</div>
-        </div>
-        <div class="card">
-          <h3>Combos Sold</h3>
-          <div class="big-number" id="comboSoldCount">0</div>
-        </div>
-      </section>
-
-      <section class="layout">
-        <div class="left-column">
-          <div class="card">
-            <div class="card-head">
-              <h2>Build Order</h2>
-              <span id="editingNotice" class="editing-badge hidden">Editing open order</span>
-            </div>
-
-            <div class="category-grid">
-              <button type="button" class="cat-btn hotdog-btn" onclick="startBuilder('menu')">Menu</button>
-              <button type="button" class="cat-btn combo-btn" onclick="startBuilder('combo')">Combo</button>
-            </div>
-
-            <div id="builderStage" class="builder-stage">
-              <p>Pick a category to begin.</p>
-            </div>
-
-            <div class="builder-actions">
-              <button type="button" class="secondary-btn" onclick="clearBuilder()">Clear Builder</button>
-              <button type="button" class="primary-btn" onclick="addBuiltItemToDraft()">Add / Update Item</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <h2>Review Item</h2>
-            <div id="reviewCard" class="review-card">
-              <p>No item being built yet.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="right-column">
-          <div class="card">
-            <div class="card-head">
-              <h2>Current Draft Order</h2>
-              <button type="button" class="secondary-btn small-btn" onclick="clearDraft()">Clear Draft</button>
-            </div>
-
-            <div id="draftOrderList" class="order-list">
-              <p>No items in draft yet.</p>
-            </div>
-
-            <div class="totals-box">
-              <div class="line total-line"><span>Draft Total</span><strong id="draftTotal">$0.00</strong></div>
-            </div>
-
-            <div class="builder-actions">
-              <button type="button" class="primary-btn" onclick="sendDraftToOpenOrders()">Send to Open Orders</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="columns-3">
-        <div class="card column-card">
-          <h2>Open Orders</h2>
-          <div id="openOrdersList" class="live-list">
-            <p>No open orders.</p>
-          </div>
-        </div>
-
-        <div class="card column-card">
-          <h2>Paid Orders</h2>
-          <div id="paidOrdersList" class="live-list">
-            <p>No paid orders.</p>
-          </div>
-        </div>
-
-        <div class="card column-card">
-          <h2>Handed Out</h2>
-          <div id="handedOrdersList" class="live-list">
-            <p>No handed out orders.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <h2>Item Counts Today</h2>
-        </div>
-        <div id="itemCountsBox" class="review-card">
-          <p>No paid items yet.</p>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <h2>Day Actions</h2>
-          <div class="inline-buttons">
-            <button type="button" class="primary-btn small-wide-btn" onclick="saveDay()">Save Day</button>
-            <button type="button" class="secondary-btn small-wide-btn" onclick="resetDay()">Reset Day</button>
-          </div>
+        <div class="summary-box">
+          <div class="label">Avg Time</div>
+          <div class="value" id="homeAvgTime">0:00</div>
         </div>
       </section>
     </section>
 
-    <section id="historyScreen" class="hidden">
-      <header class="hero">
-        <h1>Saved Previous Days</h1>
-        <p class="subtitle">Tap a day to see every order</p>
-      </header>
-
-      <div class="nav-row">
-        <button type="button" class="nav-btn" onclick="goHome()">Back to Main</button>
+    <!-- BUILD ORDER -->
+    <section id="screen-build" class="screen">
+      <div class="screen-top">
+        <button class="back-btn" data-go="home">← Back</button>
+        <h2>Build Order</h2>
       </div>
 
-      <section class="layout history-layout">
-        <div class="card">
-          <h2>Saved Days</h2>
-          <div id="historyDaysList" class="history-days-list">
-            <p>No saved days yet.</p>
+      <div class="build-layout">
+        <div class="glass-card menu-panel">
+          <h3>Items</h3>
+          <div class="menu-buttons">
+            <button class="item-btn" data-item="hotdog">Hotdog $5</button>
+            <button class="item-btn" data-item="combo">Ducky Combo $8</button>
+            <button class="item-btn" data-item="fries">Tray of Fries $6</button>
+            <button class="item-btn" data-item="asadaSmall">Asada Fries Small $7</button>
+            <button class="item-btn" data-item="asadaTray">Asada Fries Tray $10</button>
+            <button class="item-btn" data-item="cheetoFries">Cheeto Fries $13</button>
           </div>
         </div>
 
-        <div class="card">
-          <h2 id="historyDetailTitle">Day Details</h2>
-          <div id="historyDetail" class="history-detail">
-            <p>Select a day.</p>
+        <div class="glass-card draft-panel">
+          <div class="draft-head">
+            <h3>Current Order</h3>
+            <button id="clearDraftBtn" class="small-btn danger-btn" type="button">Clear</button>
+          </div>
+
+          <div class="draft-controls">
+            <div class="field">
+              <label>Customer Name / Note</label>
+              <input id="orderCustomer" type="text" placeholder="Optional name or note" />
+            </div>
+            <div class="field">
+              <label>Payment</label>
+              <div class="pay-pills">
+                <button class="pay-pill active" data-payment="cash" type="button">Cash</button>
+                <button class="pay-pill" data-payment="digital" type="button">Digital</button>
+                <button class="pay-pill" data-payment="split" type="button">Split</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="draftItems" class="draft-items empty-state">
+            Add items to start the order.
+          </div>
+
+          <div class="draft-footer">
+            <div class="draft-total-line">
+              <span>Order Total</span>
+              <strong id="draftTotal">$0.00</strong>
+            </div>
+            <button id="sendOrderBtn" class="action-btn" type="button">Send to Open Orders</button>
           </div>
         </div>
-      </section>
+      </div>
     </section>
+
+    <!-- OPEN ORDERS -->
+    <section id="screen-open" class="screen">
+      <div class="screen-top">
+        <button class="back-btn" data-go="home">← Back</button>
+        <h2>Open Orders</h2>
+      </div>
+      <div id="openOrdersList" class="order-list"></div>
+    </section>
+
+    <!-- HANDED OUT -->
+    <section id="screen-handed" class="screen">
+      <div class="screen-top">
+        <button class="back-btn" data-go="home">← Back</button>
+        <h2>Handed Out</h2>
+      </div>
+      <div class="glass-card notice-card">
+        Orders stay here for 1 minute, then disappear from this screen. They still stay saved in history.
+      </div>
+      <div id="handedOutList" class="order-list"></div>
+    </section>
+
+    <!-- STATS -->
+    <section id="screen-stats" class="screen">
+      <div class="screen-top">
+        <button class="back-btn" data-go="home">← Back</button>
+        <h2>Stats / History</h2>
+      </div>
+
+      <div class="stats-grid">
+        <div class="glass-card stat-card">
+          <h3>Daily</h3>
+          <div class="stat-line"><span>Sales</span><strong id="dailySales">$0.00</strong></div>
+          <div class="stat-line"><span>Orders</span><strong id="dailyOrders">0</strong></div>
+          <div class="stat-line"><span>Avg Time</span><strong id="dailyAvgTime">0:00</strong></div>
+          <div class="stat-line"><span>Most Sold Item</span><strong id="dailyTopItem">—</strong></div>
+        </div>
+
+        <div class="glass-card stat-card">
+          <h3>Weekly</h3>
+          <div class="stat-line"><span>Sales</span><strong id="weeklySales">$0.00</strong></div>
+          <div class="stat-line"><span>Orders</span><strong id="weeklyOrders">0</strong></div>
+          <div class="stat-line"><span>Avg Time</span><strong id="weeklyAvgTime">0:00</strong></div>
+          <div class="stat-line"><span>Most Sold Item</span><strong id="weeklyTopItem">—</strong></div>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <h3>Daily Item Counts</h3>
+        <div id="dailyItemCounts" class="stats-list"></div>
+      </div>
+
+      <div class="glass-card">
+        <h3>Weekly Item Counts</h3>
+        <div id="weeklyItemCounts" class="stats-list"></div>
+      </div>
+
+      <div class="glass-card">
+        <h3>Previous Days</h3>
+        <div id="daysList" class="days-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ITEM BUILDER MODAL -->
+  <div id="itemModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="itemModalTitle">Build Item</h3>
+        <button id="closeItemModalBtn" class="icon-btn" type="button">✕</button>
+      </div>
+      <div id="itemModalBody"></div>
+      <div class="modal-actions">
+        <button id="itemModalSaveBtn" class="action-btn" type="button">Add Item</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DAY DETAIL MODAL -->
+  <div id="dayModal" class="modal hidden">
+    <div class="modal-card large">
+      <div class="modal-head">
+        <h3 id="dayModalTitle">Day Details</h3>
+        <button id="closeDayModalBtn" class="icon-btn" type="button">✕</button>
+      </div>
+      <div id="dayModalSummary" class="day-summary"></div>
+      <div id="dayModalOrders" class="day-orders"></div>
+    </div>
   </div>
 
   <script type="module" src="script.js"></script>
