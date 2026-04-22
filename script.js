@@ -189,11 +189,11 @@ function renderDraft() {
     state.draft.items.forEach((item, index) => {
       const box = document.createElement("div");
       box.className = "draft-item";
-      box.innerHTML = `
-        <div class="draft-item-top">
-          <span>${item.name}</span>
-          <span>${money(item.lineTotal)}</span>
-        </div>
+     box.innerHTML = `
+  <div class="draft-item-top">
+    <span>${item.quantity || 1}x ${item.name}</span>
+    <span>${money(item.lineTotal)}</span>
+  </div>
         ${item.selected?.length ? `<div class="draft-item-sub">Toppings: ${item.selected.join(", ")}</div>` : ""}
         ${item.addons?.length ? `<div class="draft-item-sub">Add-ons: ${item.addons.join(", ")}</div>` : ""}
         ${item.note ? `<div class="draft-item-sub">Note: ${item.note}</div>` : ""}
@@ -312,7 +312,7 @@ function renderHandedOut() {
 function renderItemsHtml(items = []) {
   let html = "<ul>";
   items.forEach(item => {
-    html += `<li><strong>${item.name}</strong> — ${money(item.lineTotal)}`;
+html += `<li><strong>${item.quantity || 1}x ${item.name}</strong> — ${money(item.lineTotal)}`;
     if (item.selected?.length) html += `<br><small>Toppings: ${item.selected.join(", ")}</small>`;
     if (item.addons?.length) html += `<br><small>Add-ons: ${item.addons.join(", ")}</small>`;
     if (item.note) html += `<br><small>Note: ${item.note}</small>`;
@@ -448,39 +448,44 @@ function openItemBuilder(itemKey) {
   if (!def) return;
 
   currentItemBuild = {
-    editIndex: null,
-    key: itemKey,
-    name: def.name,
-    basePrice: def.price,
-    type: def.type,
-    selected: [],
-    addons: [],
-    note: ""
-  };
+  editIndex: null,
+  key: itemKey,
+  name: def.name,
+  basePrice: def.price,
+  type: def.type,
+  quantity: 1,
+  selected: [],
+  addons: [],
+  note: ""
+};
+  
 
   renderItemBuilder();
 }
 
 function openItemBuilderFromExisting(index) {
   const item = state.draft.items[index];
-  currentItemBuild = {
-    editIndex: index,
-    key: null,
-    name: item.name,
-    basePrice: item.basePrice,
-    type: item.type,
-    selected: [...(item.selected || [])],
-    addons: [...(item.addons || [])],
-    note: item.note || ""
-  };
+ currentItemBuild = {
+  editIndex: index,
+  key: item.key || null,
+  name: item.name,
+  basePrice: item.basePrice,
+  type: item.type,
+  quantity: item.quantity || 1,
+  selected: [...(item.selected || [])],
+  addons: [...(item.addons || [])],
+  note: item.note || ""
+};
   renderItemBuilder();
 }
 
 function itemBuildTotal(build) {
-  let total = Number(build.basePrice || 0);
-  if (build.addons.includes("Extra Meat")) total += 3;
-  if (build.addons.includes("Double Meat")) total += 5;
-  return total;
+  let singlePrice = Number(build.basePrice || 0);
+
+  if (build.addons.includes("Extra Meat")) singlePrice += 3;
+  if (build.addons.includes("Double Meat")) singlePrice += 5;
+
+  return singlePrice * Number(build.quantity || 1);
 }
 
 function renderItemBuilder() {
@@ -502,24 +507,39 @@ function renderItemBuilder() {
   }
 
   body.innerHTML = `
+    <div class="field">
+      <label>Quantity</label>
+      <input id="itemQuantity" type="number" min="1" step="1" value="${build.quantity || 1}" />
+    </div>
+
     ${toppingOptions.length ? `
       <div class="field">
         <label>Toppings</label>
         <div class="option-grid" id="toppingsGrid"></div>
       </div>
     ` : ""}
+
     ${addonOptions.length ? `
       <div class="field">
         <label>Add-ons</label>
         <div class="option-grid" id="addonsGrid"></div>
       </div>
     ` : ""}
+
     <div class="field">
       <label>Notes</label>
       <textarea id="itemNote" rows="3" placeholder="Extra details for this item"></textarea>
     </div>
+
     <div class="inline-total">Item Total: <strong id="itemBuildTotal">${money(itemBuildTotal(build))}</strong></div>
   `;
+
+  const qtyInput = document.getElementById("itemQuantity");
+  qtyInput.addEventListener("input", () => {
+    const qty = Math.max(1, Number(qtyInput.value || 1));
+    build.quantity = qty;
+    document.getElementById("itemBuildTotal").textContent = money(itemBuildTotal(build));
+  });
 
   if (toppingOptions.length) {
     const grid = document.getElementById("toppingsGrid");
@@ -572,17 +592,32 @@ function renderItemBuilder() {
 
 function saveBuiltItemToDraft() {
   if (!currentItemBuild) return;
+
   currentItemBuild.note = document.getElementById("itemNote")?.value?.trim() || "";
+  currentItemBuild.quantity = Math.max(1, Number(document.getElementById("itemQuantity")?.value || 1));
+
   const builtItem = {
     key: currentItemBuild.key,
     name: currentItemBuild.name,
     type: currentItemBuild.type,
     basePrice: currentItemBuild.basePrice,
+    quantity: currentItemBuild.quantity,
     selected: [...currentItemBuild.selected],
     addons: [...currentItemBuild.addons],
     note: currentItemBuild.note,
     lineTotal: itemBuildTotal(currentItemBuild)
   };
+
+  if (currentItemBuild.editIndex === null) {
+    state.draft.items.push(builtItem);
+  } else {
+    state.draft.items[currentItemBuild.editIndex] = builtItem;
+  }
+
+  currentItemBuild = null;
+  document.getElementById("itemModal").classList.add("hidden");
+  renderDraft();
+}
 
   if (currentItemBuild.editIndex === null) {
     state.draft.items.push(builtItem);
@@ -619,17 +654,34 @@ async function sendDraftToOpenOrders() {
     createdAt: Date.now()
   };
 
-  if (state.editingOrderId) {
-    await set(ref(db, `duckysTracker/days/${date}/openOrders/${state.editingOrderId}`), payload);
+  let orderId = state.editingOrderId;
+
+  if (orderId) {
+    await set(ref(db, `duckysTracker/days/${date}/openOrders/${orderId}`), payload);
   } else {
     const newRef = push(ref(db, `duckysTracker/days/${date}/openOrders`));
+    orderId = newRef.key;
     await set(newRef, payload);
   }
 
+  // optimistic local update so it shows immediately
+  if (!state.allDays[date]) {
+    state.allDays[date] = {
+      date,
+      openOrders: {},
+      completedOrders: {},
+      orderCounter: orderNumber
+    };
+  }
+
+  if (!state.allDays[date].openOrders) state.allDays[date].openOrders = {};
+  state.allDays[date].openOrders[orderId] = payload;
+
   resetDraft();
+  renderHomeSummary();
+  renderOpenOrders();
   setActiveScreen("open");
 }
-
 async function markOrderHandedOut(orderId) {
   const order = getCurrentDayNode().openOrders?.[orderId];
   if (!order) return;
@@ -679,15 +731,16 @@ function resetDraft() {
 
 // ---------- firebase watch ----------
 function bindDayWatcher() {
-  onValue(ref(db, "duckysTracker/days"), snapshot => {
-    state.allDays = snapshot.val() || {};
-    state.openOrders = getCurrentDayNode().openOrders || {};
-    state.completedOrders = getCurrentDayNode().completedOrders || {};
-    renderHomeSummary();
-    renderOpenOrders();
-    renderHandedOut();
-    renderStatsAndHistory();
-  });
+onValue(ref(db, "duckysTracker/days"), snapshot => {
+  state.allDays = snapshot.val() || {};
+  state.openOrders = getCurrentDayNode().openOrders || {};
+  state.completedOrders = getCurrentDayNode().completedOrders || {};
+  syncTipsFromDay();
+  renderHomeSummary();
+  renderOpenOrders();
+  renderHandedOut();
+  renderStatsAndHistory();
+});
 }
 
 // ---------- events ----------
@@ -696,14 +749,15 @@ function bindEvents() {
     btn.addEventListener("click", () => setActiveScreen(btn.dataset.go));
   });
 
-  document.getElementById("workDate").addEventListener("change", async (e) => {
-    state.currentDate = e.target.value;
-    await ensureDayNode(state.currentDate);
-    renderHomeSummary();
-    renderOpenOrders();
-    renderHandedOut();
-    renderStatsAndHistory();
-  });
+ document.getElementById("workDate").addEventListener("change", async (e) => {
+  state.currentDate = e.target.value;
+  await ensureDayNode(state.currentDate);
+  syncTipsFromDay();
+  renderHomeSummary();
+  renderOpenOrders();
+  renderHandedOut();
+  renderStatsAndHistory();
+});
 
   document.querySelectorAll(".item-btn").forEach(btn => {
     btn.addEventListener("click", () => openItemBuilder(btn.dataset.item));
