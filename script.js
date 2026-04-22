@@ -2,11 +2,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/fireba
 import {
   getDatabase,
   ref,
-  push,
   set,
+  push,
   remove,
-  onValue,
-  runTransaction
+  get,
+  onValue
 } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -21,1002 +21,780 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const HOTDOG_CHOICES = ["Ketchup", "Mustard", "Mayo", "Grilled Onions", "Hot Cheetos"];
-const FRIES_CHOICES = ["Sour Cream", "Salsa", "Pico de Gallo", "Duck Sauce", "Cheese"];
-const FRIES_MEAT_CHOICES = ["Regular Meat", "Extra Meat +$3", "Double Meat +$5"];
 
-let liveState = {
-  meta: { nextOrderNumber: 1 },
-  openOrders: {},
-  paidOrders: {},
-  handedOutOrders: {},
-  days: {}
+const HOTDOG_TOPPINGS = [
+  "Mayo",
+  "Mustard",
+  "Ketchup",
+  "Grilled Onions",
+  "Pico de Gallo",
+  "Hot Cheetos"
+];
+
+const FRY_TOPPINGS = [
+  "Cheese",
+  "Pico de Gallo",
+  "Sour Cream",
+  "Salsa Verde"
+];
+
+const ITEM_DEFS = {
+  hotdog: { name: "Hotdog", price: 5, type: "hotdog" },
+  combo: { name: "Ducky Combo", price: 8, type: "combo" },
+  fries: { name: "Tray of Fries", price: 6, type: "plainFries" },
+  asadaSmall: { name: "Asada Fries Small", price: 7, type: "asada" },
+  asadaTray: { name: "Asada Fries Tray", price: 10, type: "asada" },
+  cheetoFries: { name: "Cheeto Fries", price: 13, type: "cheetoAsada" }
 };
 
-let draftItems = [];
-let builder = { category: null, data: {} };
-let editingDraftIndex = null;
-let editingOpenOrderKey = null;
-let selectedHistoryDay = null;
+const SCREENS = ["home", "build", "open", "handed", "stats"];
 
-function formatMoney(value) {
-  return `$${Number(value || 0).toFixed(2)}`;
+const state = {
+  currentDate: "",
+  allDays: {},
+  openOrders: {},
+  completedOrders: {},
+  editingOrderId: null,
+  draft: {
+    customer: "",
+    payment: "cash",
+    items: []
+  }
+};
+
+let openTimerInterval = null;
+let handedTimerInterval = null;
+let currentItemBuild = null;
+
+// ---------- helpers ----------
+function money(v) {
+  return `$${Number(v || 0).toFixed(2)}`;
 }
 
-function escapeForSingleQuote(str) {
-  return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+function todayLocalValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  const local = new Date(now.getTime() - offset * 60000);
+  return local.toISOString().split("T")[0];
 }
 
-function nowLabel() {
-  return new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function formatDateForDisplay(dateString) {
+  if (!dateString) return "";
+  const [year, month, day] = dateString.split("-");
+  return `${month}/${day}/${year}`;
 }
 
-function todayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function formatSeconds(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
-function todayLabel() {
-  return new Date().toLocaleDateString();
+function getDraftTotal() {
+  return state.draft.items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
 }
 
-function clone(obj) {
-  return JSON.parse(JSON.stringify(obj));
+function getCurrentDayNode() {
+  return state.allDays[state.currentDate] || { openOrders: {}, completedOrders: {} };
 }
 
-function getCountsFromOrders(ordersObject) {
-  const counts = {
-    "Bacon Dog": 0,
-    "Quack Attack": 0,
-    "Asada Fries": 0,
-    "Cheeto Fries": 0,
-    "Small Fry Tray": 0,
-    "Big Fry Tray": 0,
-    "Bacon Dog + Fries Combo": 0
-  };
+function getOpenOrdersArray() {
+  return Object.entries(getCurrentDayNode().openOrders || {}).map(([id, order]) => ({ id, ...order }));
+}
 
-  Object.values(ordersObject || {}).forEach(order => {
+function getCompletedOrdersArray() {
+  return Object.entries(getCurrentDayNode().completedOrders || {}).map(([id, order]) => ({ id, ...order }));
+}
+
+function startOfWeek(dateString) {
+  const d = new Date(`${dateString}T12:00:00`);
+  const day = d.getDay();
+  d.setDate(d.getDate() - day);
+  return d;
+}
+
+function sameWeek(dateStringA, dateStringB) {
+  const a = startOfWeek(dateStringA);
+  const b = startOfWeek(dateStringB);
+  return a.toDateString() === b.toDateString();
+}
+
+function buildItemCounts(orders) {
+  const counts = {};
+  orders.forEach(order => {
     (order.items || []).forEach(item => {
-      if (item.kind === "baconDog") counts["Bacon Dog"] += item.quantity || 0;
-      if (item.kind === "quackAttack") counts["Quack Attack"] += item.quantity || 0;
-      if (item.kind === "asadaFries") counts["Asada Fries"] += item.quantity || 0;
-      if (item.kind === "cheetoFries") counts["Cheeto Fries"] += item.quantity || 0;
-      if (item.kind === "smallFryTray") counts["Small Fry Tray"] += item.quantity || 0;
-      if (item.kind === "bigFryTray") counts["Big Fry Tray"] += item.quantity || 0;
-      if (item.kind === "combo") counts["Bacon Dog + Fries Combo"] += item.quantity || 0;
+      counts[item.name] = (counts[item.name] || 0) + 1;
     });
   });
-
   return counts;
 }
 
-function getTopSeller(counts) {
-  let bestName = "—";
-  let bestCount = 0;
+function topItemFromCounts(counts) {
+  const entries = Object.entries(counts);
+  if (!entries.length) return "—";
+  entries.sort((a, b) => b[1] - a[1]);
+  return `${entries[0][0]} (${entries[0][1]})`;
+}
 
-  Object.entries(counts).forEach(([name, count]) => {
-    if (count > bestCount) {
-      bestName = `${name} (${count})`;
-      bestCount = count;
-    }
+function avgTimeFromOrders(orders) {
+  const finished = orders.filter(o => typeof o.serviceSeconds === "number");
+  if (!finished.length) return "0:00";
+  const total = finished.reduce((sum, o) => sum + o.serviceSeconds, 0);
+  return formatSeconds(Math.round(total / finished.length));
+}
+
+function setActiveScreen(name) {
+  SCREENS.forEach(screen => {
+    document.getElementById(`screen-${screen}`).classList.toggle("active", screen === name);
   });
-
-  return bestCount === 0 ? "—" : bestName;
+  if (name === "open") renderOpenOrders();
+  if (name === "handed") renderHandedOut();
+  if (name === "stats") renderStatsAndHistory();
 }
 
-function totalsFromOrders(ordersObject) {
-  const list = Object.values(ordersObject || {});
-  let cash = 0;
-  let cashApp = 0;
-  let applePay = 0;
-  let square = 0;
-
-  list.forEach(order => {
-    if (order.payment?.type === "cash") {
-      cash += Number(order.payment.total || 0);
-    }
-    if (order.payment?.type === "digital") {
-      if (order.payment.method === "Cash App") cashApp += Number(order.payment.total || 0);
-      if (order.payment.method === "Apple Pay") applePay += Number(order.payment.total || 0);
-      if (order.payment.method === "Square") square += Number(order.payment.total || 0);
-    }
-    if (order.payment?.type === "split") {
-      cash += Number(order.payment.cashAmount || 0);
-      if (order.payment.digitalMethod === "Cash App") cashApp += Number(order.payment.digitalAmount || 0);
-      if (order.payment.digitalMethod === "Apple Pay") applePay += Number(order.payment.digitalAmount || 0);
-      if (order.payment.digitalMethod === "Square") square += Number(order.payment.digitalAmount || 0);
-    }
-  });
-
-  return {
-    cash,
-    cashApp,
-    applePay,
-    square,
-    dayTotal: cash + cashApp + applePay + square
-  };
-}
-
-function choiceButtons(items, key, isMulti = false) {
-  return `
-    <div class="choice-grid">
-      ${items.map(item => {
-        const selected = isMulti
-          ? (Array.isArray(builder.data[key]) && builder.data[key].includes(item))
-          : builder.data[key] === item;
-
-        const safe = escapeForSingleQuote(item);
-        const cls = selected
-          ? `choice-btn selected ${isMulti ? "multi-selected" : ""}`
-          : "choice-btn";
-
-        const click = isMulti
-          ? `toggleBuilderArray('${key}', '${safe}')`
-          : `setBuilderValue('${key}', '${safe}')`;
-
-        return `<button type="button" class="${cls}" onclick="${click}">${item}</button>`;
-      }).join("")}
-    </div>
-  `;
-}
-
-function renderScreen() {
-  const params = new URLSearchParams(window.location.search);
-  const view = params.get("view");
-
-  document.getElementById("mainScreen").classList.toggle("hidden", view === "history");
-  document.getElementById("historyScreen").classList.toggle("hidden", view !== "history");
-
-  if (view === "history") {
-    const day = params.get("day");
-    selectedHistoryDay = day || null;
-    renderHistoryScreen();
-  } else {
-    renderMainScreen();
+async function ensureDayNode(date) {
+  const dayRef = ref(db, `duckysTracker/days/${date}`);
+  const snap = await get(dayRef);
+  if (!snap.exists()) {
+    await set(dayRef, {
+      date,
+      openOrders: {},
+      completedOrders: {},
+      orderCounter: 0
+    });
   }
 }
 
-window.goHome = function () {
-  history.pushState({}, "", window.location.pathname);
-  renderScreen();
-};
-
-window.goHistory = function () {
-  history.pushState({}, "", `${window.location.pathname}?view=history`);
-  renderScreen();
-};
-
-window.selectHistoryDay = function (dayKey) {
-  history.pushState({}, "", `${window.location.pathname}?view=history&day=${encodeURIComponent(dayKey)}`);
-  renderScreen();
-};
-
-window.addEventListener("popstate", renderScreen);
-
-window.startBuilder = function (category) {
-  builder = { category, data: {} };
-  editingDraftIndex = null;
-  renderBuilder();
-  renderReview();
-};
-
-window.clearBuilder = function () {
-  builder = { category: null, data: {} };
-  editingDraftIndex = null;
-  renderBuilder();
-  renderReview();
-};
-
-window.setBuilderValue = function (key, value) {
-  builder.data[key] = value;
-  renderBuilder();
-  renderReview();
-};
-
-window.toggleBuilderArray = function (key, value) {
-  if (!Array.isArray(builder.data[key])) builder.data[key] = [];
-  const arr = builder.data[key];
-  const idx = arr.indexOf(value);
-
-  if (idx >= 0) arr.splice(idx, 1);
-  else arr.push(value);
-
-  renderBuilder();
-  renderReview();
-};
-
-function renderBuilder() {
-  const el = document.getElementById("builderStage");
-  if (!el) return;
-
-  if (!builder.category) {
-    el.innerHTML = `<p>Pick a category to begin.</p>`;
-    return;
-  }
-
-  if (builder.category === "menu") {
-    let html = `
-      <h3>Menu</h3>
-      <h4>1. Choose item</h4>
-      ${choiceButtons([
-        "Bacon Dog",
-        "Quack Attack",
-        "Asada Fries",
-        "Cheeto Fries",
-        "Small Fry Tray",
-        "Big Fry Tray"
-      ], "itemType")}
-    `;
-
-    const itemType = builder.data.itemType;
-
-    if (itemType) {
-      html += `
-        <h4>2. Quantity</h4>
-        ${choiceButtons(["1", "2", "3", "4", "5"], "quantity")}
-      `;
-    }
-
-    if (builder.data.quantity && (itemType === "Bacon Dog" || itemType === "Quack Attack")) {
-      html += `
-        <h4>3. Condiments / Extras</h4>
-        ${choiceButtons(HOTDOG_CHOICES, "condiments", true)}
-      `;
-    }
-
-    if (builder.data.quantity && (itemType === "Asada Fries" || itemType === "Cheeto Fries")) {
-      html += `
-        <h4>3. Toppings</h4>
-        ${choiceButtons(FRIES_CHOICES, "friesToppings", true)}
-        <h4>4. Meat Option</h4>
-        ${choiceButtons(FRIES_MEAT_CHOICES, "meatOption")}
-      `;
-    }
-
-    el.innerHTML = html;
-    return;
-  }
-
-  if (builder.category === "combo") {
-    let html = `
-      <h3>Bacon Dog + Fries Combo</h3>
-      <h4>1. Quantity</h4>
-      ${choiceButtons(["1", "2", "3", "4", "5"], "quantity")}
-    `;
-
-    if (builder.data.quantity) {
-      html += `
-        <h4>2. Hotdog Condiments</h4>
-        ${choiceButtons(HOTDOG_CHOICES, "comboDogCondiments", true)}
-        <div class="review-card">
-          <p><strong>Fries:</strong> Ketchup only</p>
-        </div>
-      `;
-    }
-
-    el.innerHTML = html;
-  }
+async function nextOrderNumber(date) {
+  const dayNode = state.allDays[date] || {};
+  const current = Number(dayNode.orderCounter || 0) + 1;
+  await set(ref(db, `duckysTracker/days/${date}/orderCounter`), current);
+  return current;
 }
 
-function buildPreviewItem() {
-  const d = builder.data;
-  const qty = Number(d.quantity || 0);
-  if (!builder.category || !qty) return null;
-
-  if (builder.category === "menu") {
-    const type = d.itemType;
-    if (!type) return null;
-
-    if (type === "Bacon Dog" || type === "Quack Attack") {
-      const unit = type === "Bacon Dog" ? 5 : 6;
-      return {
-        kind: type === "Bacon Dog" ? "baconDog" : "quackAttack",
-        name: type,
-        quantity: qty,
-        unitPrice: unit,
-        totalPrice: unit * qty,
-        lines: [`Quantity: ${qty}`, ...(d.condiments || [])]
-      };
-    }
-
-    if (type === "Asada Fries" || type === "Cheeto Fries") {
-      const base = type === "Asada Fries" ? 10 : 13;
-      let meatUp = 0;
-      if (d.meatOption === "Extra Meat +$3") meatUp = 3;
-      if (d.meatOption === "Double Meat +$5") meatUp = 5;
-      const unit = base + meatUp;
-
-      return {
-        kind: type === "Asada Fries" ? "asadaFries" : "cheetoFries",
-        name: type,
-        quantity: qty,
-        unitPrice: unit,
-        totalPrice: unit * qty,
-        lines: [`Quantity: ${qty}`, ...(d.friesToppings || []), d.meatOption || "Regular Meat"]
-      };
-    }
-
-    if (type === "Small Fry Tray" || type === "Big Fry Tray") {
-      const unit = type === "Small Fry Tray" ? 3 : 6;
-      return {
-        kind: type === "Small Fry Tray" ? "smallFryTray" : "bigFryTray",
-        name: type,
-        quantity: qty,
-        unitPrice: unit,
-        totalPrice: unit * qty,
-        lines: [`Quantity: ${qty}`]
-      };
-    }
-  }
-
-  if (builder.category === "combo") {
-    return {
-      kind: "combo",
-      name: "Bacon Dog + Fries Combo",
-      quantity: qty,
-      unitPrice: 8,
-      totalPrice: 8 * qty,
-      lines: [`Quantity: ${qty}`, "Includes: Bacon Dog", ...(d.comboDogCondiments || []), "Includes: Fries", "Fries: Ketchup only"]
-    };
-  }
-
-  return null;
-}
-
-function renderReview() {
-  const card = document.getElementById("reviewCard");
-  const preview = buildPreviewItem();
-
-  if (!preview) {
-    card.innerHTML = `<p>No item being built yet.</p>`;
-    return;
-  }
-
-  card.innerHTML = `
-    <p><strong>${preview.name}</strong></p>
-    ${preview.lines.map(line => `<p>${line}</p>`).join("")}
-    <p><strong>Total:</strong> ${formatMoney(preview.totalPrice)}</p>
-  `;
-}
-
-window.addBuiltItemToDraft = function () {
-  const preview = buildPreviewItem();
-  if (!preview) {
-    alert("Finish building the item first.");
-    return;
-  }
-
-  const itemToStore = {
-    ...preview,
-    builderCategory: builder.category,
-    builderData: clone(builder.data)
-  };
-
-  if (editingDraftIndex !== null) {
-    draftItems[editingDraftIndex] = itemToStore;
-  } else {
-    draftItems.push(itemToStore);
-  }
-
-  editingDraftIndex = null;
-  builder = { category: null, data: {} };
-  renderBuilder();
-  renderReview();
-  renderDraft();
-};
-
-window.editDraftItem = function (index) {
-  const item = draftItems[index];
-  if (!item) return;
-
-  builder = {
-    category: item.builderCategory,
-    data: clone(item.builderData)
-  };
-  editingDraftIndex = index;
-  renderBuilder();
-  renderReview();
-};
-
-window.removeDraftItem = function (index) {
-  draftItems.splice(index, 1);
-  renderDraft();
-};
-
-window.clearDraft = function () {
-  if (!draftItems.length && !editingOpenOrderKey) return;
-  if (!confirm("Clear the current draft?")) return;
-
-  draftItems = [];
-  builder = { category: null, data: {} };
-  editingDraftIndex = null;
-  editingOpenOrderKey = null;
-  renderBuilder();
-  renderReview();
-  renderDraft();
-};
-
+// ---------- rendering ----------
 function renderDraft() {
-  const list = document.getElementById("draftOrderList");
-  const total = draftItems.reduce((sum, item) => sum + item.totalPrice, 0);
+  document.getElementById("orderCustomer").value = state.draft.customer;
+  document.querySelectorAll(".pay-pill").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.payment === state.draft.payment);
+  });
 
-  document.getElementById("draftTotal").textContent = formatMoney(total);
-  document.getElementById("editingNotice").classList.toggle("hidden", !editingOpenOrderKey);
+  const wrap = document.getElementById("draftItems");
+  if (!state.draft.items.length) {
+    wrap.className = "draft-items empty-state";
+    wrap.textContent = "Add items to start the order.";
+  } else {
+    wrap.className = "draft-items";
+    wrap.innerHTML = "";
+    state.draft.items.forEach((item, index) => {
+      const box = document.createElement("div");
+      box.className = "draft-item";
+      box.innerHTML = `
+        <div class="draft-item-top">
+          <span>${item.name}</span>
+          <span>${money(item.lineTotal)}</span>
+        </div>
+        ${item.selected?.length ? `<div class="draft-item-sub">Toppings: ${item.selected.join(", ")}</div>` : ""}
+        ${item.addons?.length ? `<div class="draft-item-sub">Add-ons: ${item.addons.join(", ")}</div>` : ""}
+        ${item.note ? `<div class="draft-item-sub">Note: ${item.note}</div>` : ""}
+        <div class="draft-item-actions">
+          <button class="small-btn" data-edit-index="${index}" type="button">Edit</button>
+          <button class="small-btn danger-btn" data-remove-index="${index}" type="button">Remove</button>
+        </div>
+      `;
+      wrap.appendChild(box);
+    });
 
-  if (!draftItems.length) {
-    list.innerHTML = `<p>No items in draft yet.</p>`;
+    wrap.querySelectorAll("[data-remove-index]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.draft.items.splice(Number(btn.dataset.removeIndex), 1);
+        renderDraft();
+      });
+    });
+
+    wrap.querySelectorAll("[data-edit-index]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        openItemBuilderFromExisting(Number(btn.dataset.editIndex));
+      });
+    });
+  }
+
+  document.getElementById("draftTotal").textContent = money(getDraftTotal());
+}
+
+function renderOpenOrders() {
+  const wrap = document.getElementById("openOrdersList");
+  const orders = getOpenOrdersArray().sort((a, b) => a.startedAt - b.startedAt);
+
+  wrap.innerHTML = "";
+  if (!orders.length) {
+    wrap.innerHTML = `<div class="glass-card notice-card">No open orders right now.</div>`;
     return;
   }
 
-  list.innerHTML = draftItems.map((item, index) => `
-    <div class="order-item">
-      <div class="order-item-head">
+  orders.forEach(order => {
+    const box = document.createElement("div");
+    box.className = "order-card";
+    box.innerHTML = `
+      <div class="order-card-head">
         <div>
-          <p><strong>${item.name}</strong></p>
-          ${item.lines.map(line => `<p>${line}</p>`).join("")}
-          <p><strong>${formatMoney(item.totalPrice)}</strong></p>
+          <div><strong>Order #${order.orderNumber}</strong></div>
+          <div>${order.customer || "No customer name"}</div>
         </div>
+        <div class="order-timer" data-started="${order.startedAt}">0:00</div>
       </div>
+
+      <div class="order-meta">
+        <div>Payment: <strong>${order.payment}</strong></div>
+        <div>Total: <strong>${money(order.total)}</strong></div>
+      </div>
+
+      <div class="order-items">${renderItemsHtml(order.items)}</div>
+
       <div class="order-actions">
-        <button type="button" class="action-btn" onclick="editDraftItem(${index})">Edit Item</button>
-        <button type="button" class="action-btn delete-btn" onclick="removeDraftItem(${index})">Remove</button>
+        <button class="order-action edit-btn" data-edit-order="${order.id}" type="button">Edit</button>
+        <button class="order-action done-btn" data-done-order="${order.id}" type="button">Handed Out</button>
+        <button class="order-action remove-btn" data-remove-order="${order.id}" type="button">Remove</button>
       </div>
-    </div>
-  `).join("");
+    `;
+    wrap.appendChild(box);
+  });
+
+  wrap.querySelectorAll("[data-edit-order]").forEach(btn => {
+    btn.addEventListener("click", () => editOpenOrder(btn.dataset.editOrder));
+  });
+
+  wrap.querySelectorAll("[data-done-order]").forEach(btn => {
+    btn.addEventListener("click", () => markOrderHandedOut(btn.dataset.doneOrder));
+  });
+
+  wrap.querySelectorAll("[data-remove-order]").forEach(btn => {
+    btn.addEventListener("click", () => removeOpenOrder(btn.dataset.removeOrder));
+  });
+
+  refreshOpenOrderTimers();
 }
 
-window.sendDraftToOpenOrders = async function () {
-  if (!draftItems.length) {
+function renderHandedOut() {
+  const wrap = document.getElementById("handedOutList");
+  const now = Date.now();
+  const orders = getCompletedOrdersArray()
+    .filter(order => now - (order.completedAt || 0) < 60000)
+    .sort((a, b) => b.completedAt - a.completedAt);
+
+  wrap.innerHTML = "";
+  if (!orders.length) {
+    wrap.innerHTML = `<div class="glass-card notice-card">No recently handed out orders.</div>`;
+    return;
+  }
+
+  orders.forEach(order => {
+    const box = document.createElement("div");
+    box.className = "order-card";
+    box.innerHTML = `
+      <div class="order-card-head">
+        <div>
+          <div><strong>Order #${order.orderNumber}</strong></div>
+          <div>${order.customer || "No customer name"}</div>
+        </div>
+        <div class="order-timer">${formatSeconds(order.serviceSeconds || 0)}</div>
+      </div>
+      <div class="order-meta">
+        <div>Finished: <strong>${money(order.total)}</strong></div>
+        <div>Payment: <strong>${order.payment}</strong></div>
+      </div>
+      <div class="order-items">${renderItemsHtml(order.items)}</div>
+    `;
+    wrap.appendChild(box);
+  });
+}
+
+function renderItemsHtml(items = []) {
+  let html = "<ul>";
+  items.forEach(item => {
+    html += `<li><strong>${item.name}</strong> — ${money(item.lineTotal)}`;
+    if (item.selected?.length) html += `<br><small>Toppings: ${item.selected.join(", ")}</small>`;
+    if (item.addons?.length) html += `<br><small>Add-ons: ${item.addons.join(", ")}</small>`;
+    if (item.note) html += `<br><small>Note: ${item.note}</small>`;
+    html += `</li>`;
+  });
+  html += "</ul>";
+  return html;
+}
+
+function renderHomeSummary() {
+  const completed = getCompletedOrdersArray();
+  document.getElementById("homeOpenCount").textContent = String(getOpenOrdersArray().length);
+  document.getElementById("homeCompletedCount").textContent = String(completed.length);
+  document.getElementById("homeTodaySales").textContent = money(completed.reduce((s, o) => s + Number(o.total || 0), 0));
+  document.getElementById("homeAvgTime").textContent = avgTimeFromOrders(completed);
+}
+
+function renderStatsAndHistory() {
+  const currentDayOrders = getCompletedOrdersArray().sort((a, b) => b.completedAt - a.completedAt);
+  const allDays = Object.values(state.allDays || {});
+  const weeklyDays = allDays.filter(day => day.date && sameWeek(day.date, state.currentDate));
+
+  const weeklyOrders = weeklyDays.flatMap(day =>
+    Object.values(day.completedOrders || {})
+  );
+
+  const dailyCounts = buildItemCounts(currentDayOrders);
+  const weeklyCounts = buildItemCounts(weeklyOrders);
+
+  document.getElementById("dailySales").textContent = money(currentDayOrders.reduce((s, o) => s + Number(o.total || 0), 0));
+  document.getElementById("dailyOrders").textContent = String(currentDayOrders.length);
+  document.getElementById("dailyAvgTime").textContent = avgTimeFromOrders(currentDayOrders);
+  document.getElementById("dailyTopItem").textContent = topItemFromCounts(dailyCounts);
+
+  document.getElementById("weeklySales").textContent = money(weeklyOrders.reduce((s, o) => s + Number(o.total || 0), 0));
+  document.getElementById("weeklyOrders").textContent = String(weeklyOrders.length);
+  document.getElementById("weeklyAvgTime").textContent = avgTimeFromOrders(weeklyOrders);
+  document.getElementById("weeklyTopItem").textContent = topItemFromCounts(weeklyCounts);
+
+  renderCountsList("dailyItemCounts", dailyCounts);
+  renderCountsList("weeklyItemCounts", weeklyCounts);
+  renderDaysList();
+}
+
+function renderCountsList(id, counts) {
+  const wrap = document.getElementById(id);
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) {
+    wrap.innerHTML = `<div class="stats-list-row"><span>No data yet.</span><strong>0</strong></div>`;
+    return;
+  }
+  wrap.innerHTML = "";
+  entries.forEach(([name, count]) => {
+    const row = document.createElement("div");
+    row.className = "stats-list-row";
+    row.innerHTML = `<span>${name}</span><strong>${count}</strong>`;
+    wrap.appendChild(row);
+  });
+}
+
+function renderDaysList() {
+  const wrap = document.getElementById("daysList");
+  const days = Object.values(state.allDays || {}).sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  if (!days.length) {
+    wrap.innerHTML = `<div class="day-row"><span>No saved days yet.</span></div>`;
+    return;
+  }
+
+  wrap.innerHTML = "";
+  days.forEach(day => {
+    const completed = Object.values(day.completedOrders || {});
+    const row = document.createElement("div");
+    row.className = "day-row";
+    row.innerHTML = `
+      <span>${formatDateForDisplay(day.date)}</span>
+      <span>${money(completed.reduce((s, o) => s + Number(o.total || 0), 0))}</span>
+    `;
+    row.addEventListener("click", () => openDayDetails(day));
+    wrap.appendChild(row);
+  });
+}
+
+function openDayDetails(day) {
+  document.getElementById("dayModalTitle").textContent = `Day Details - ${formatDateForDisplay(day.date)}`;
+  const completed = Object.values(day.completedOrders || {}).sort((a, b) => b.completedAt - a.completedAt);
+
+  const counts = buildItemCounts(completed);
+  document.getElementById("dayModalSummary").innerHTML = `
+    <div class="stats-list-row"><span>Sales</span><strong>${money(completed.reduce((s, o) => s + Number(o.total || 0), 0))}</strong></div>
+    <div class="stats-list-row"><span>Orders</span><strong>${completed.length}</strong></div>
+    <div class="stats-list-row"><span>Avg Time</span><strong>${avgTimeFromOrders(completed)}</strong></div>
+    <div class="stats-list-row"><span>Top Item</span><strong>${topItemFromCounts(counts)}</strong></div>
+  `;
+
+  const wrap = document.getElementById("dayModalOrders");
+  if (!completed.length) {
+    wrap.innerHTML = `<div class="day-order-card">No completed orders on this day.</div>`;
+  } else {
+    wrap.innerHTML = "";
+    completed.forEach(order => {
+      const card = document.createElement("div");
+      card.className = "day-order-card";
+      card.innerHTML = `
+        <div class="day-order-head">
+          <div><strong>Order #${order.orderNumber}</strong> ${order.customer ? `— ${order.customer}` : ""}</div>
+          <div><strong>${money(order.total)}</strong></div>
+        </div>
+        <div class="draft-item-sub">Payment: ${order.payment}</div>
+        <div class="draft-item-sub">Service Time: ${formatSeconds(order.serviceSeconds || 0)}</div>
+        <div class="day-order-items">${renderItemsHtml(order.items)}</div>
+      `;
+      wrap.appendChild(card);
+    });
+  }
+
+  document.getElementById("dayModal").classList.remove("hidden");
+}
+
+function refreshOpenOrderTimers() {
+  const timers = document.querySelectorAll("[data-started]");
+  const now = Date.now();
+  timers.forEach(el => {
+    const started = Number(el.dataset.started || 0);
+    const seconds = Math.max(0, Math.floor((now - started) / 1000));
+    el.textContent = formatSeconds(seconds);
+  });
+}
+
+// ---------- item builder ----------
+function openItemBuilder(itemKey) {
+  const def = ITEM_DEFS[itemKey];
+  if (!def) return;
+
+  currentItemBuild = {
+    editIndex: null,
+    key: itemKey,
+    name: def.name,
+    basePrice: def.price,
+    type: def.type,
+    selected: [],
+    addons: [],
+    note: ""
+  };
+
+  renderItemBuilder();
+}
+
+function openItemBuilderFromExisting(index) {
+  const item = state.draft.items[index];
+  currentItemBuild = {
+    editIndex: index,
+    key: null,
+    name: item.name,
+    basePrice: item.basePrice,
+    type: item.type,
+    selected: [...(item.selected || [])],
+    addons: [...(item.addons || [])],
+    note: item.note || ""
+  };
+  renderItemBuilder();
+}
+
+function itemBuildTotal(build) {
+  let total = Number(build.basePrice || 0);
+  if (build.addons.includes("Extra Meat")) total += 3;
+  if (build.addons.includes("Double Meat")) total += 5;
+  return total;
+}
+
+function renderItemBuilder() {
+  const build = currentItemBuild;
+  if (!build) return;
+
+  document.getElementById("itemModalTitle").textContent = build.name;
+  const body = document.getElementById("itemModalBody");
+
+  let toppingOptions = [];
+  let addonOptions = [];
+
+  if (build.type === "hotdog" || build.type === "combo") {
+    toppingOptions = HOTDOG_TOPPINGS;
+  }
+  if (build.type === "asada" || build.type === "cheetoAsada") {
+    toppingOptions = [...FRY_TOPPINGS];
+    addonOptions = ["Extra Meat", "Double Meat"];
+  }
+
+  body.innerHTML = `
+    ${toppingOptions.length ? `
+      <div class="field">
+        <label>Toppings</label>
+        <div class="option-grid" id="toppingsGrid"></div>
+      </div>
+    ` : ""}
+    ${addonOptions.length ? `
+      <div class="field">
+        <label>Add-ons</label>
+        <div class="option-grid" id="addonsGrid"></div>
+      </div>
+    ` : ""}
+    <div class="field">
+      <label>Notes</label>
+      <textarea id="itemNote" rows="3" placeholder="Extra details for this item"></textarea>
+    </div>
+    <div class="inline-total">Item Total: <strong id="itemBuildTotal">${money(itemBuildTotal(build))}</strong></div>
+  `;
+
+  if (toppingOptions.length) {
+    const grid = document.getElementById("toppingsGrid");
+    toppingOptions.forEach(name => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "check-btn";
+      btn.textContent = name;
+      if (build.selected.includes(name)) btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        const has = build.selected.includes(name);
+        if (has) {
+          build.selected = build.selected.filter(x => x !== name);
+          btn.classList.remove("active");
+        } else {
+          build.selected.push(name);
+          btn.classList.add("active");
+        }
+      });
+      grid.appendChild(btn);
+    });
+  }
+
+  if (addonOptions.length) {
+    const grid = document.getElementById("addonsGrid");
+    addonOptions.forEach(name => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "check-btn";
+      btn.textContent = name + (name === "Extra Meat" ? " +$3" : " +$5");
+      if (build.addons.includes(name)) btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        const has = build.addons.includes(name);
+        if (has) {
+          build.addons = build.addons.filter(x => x !== name);
+          btn.classList.remove("active");
+        } else {
+          build.addons.push(name);
+          btn.classList.add("active");
+        }
+        document.getElementById("itemBuildTotal").textContent = money(itemBuildTotal(build));
+      });
+      grid.appendChild(btn);
+    });
+  }
+
+  document.getElementById("itemNote").value = build.note || "";
+  document.getElementById("itemModal").classList.remove("hidden");
+}
+
+function saveBuiltItemToDraft() {
+  if (!currentItemBuild) return;
+  currentItemBuild.note = document.getElementById("itemNote")?.value?.trim() || "";
+  const builtItem = {
+    key: currentItemBuild.key,
+    name: currentItemBuild.name,
+    type: currentItemBuild.type,
+    basePrice: currentItemBuild.basePrice,
+    selected: [...currentItemBuild.selected],
+    addons: [...currentItemBuild.addons],
+    note: currentItemBuild.note,
+    lineTotal: itemBuildTotal(currentItemBuild)
+  };
+
+  if (currentItemBuild.editIndex === null) {
+    state.draft.items.push(builtItem);
+  } else {
+    state.draft.items[currentItemBuild.editIndex] = builtItem;
+  }
+
+  currentItemBuild = null;
+  document.getElementById("itemModal").classList.add("hidden");
+  renderDraft();
+}
+
+// ---------- orders ----------
+async function sendDraftToOpenOrders() {
+  if (!state.draft.items.length) {
     alert("Add at least one item first.");
     return;
   }
 
-  const subtotal = draftItems.reduce((sum, item) => sum + item.totalPrice, 0);
-
-  if (editingOpenOrderKey) {
-    const current = liveState.openOrders[editingOpenOrderKey];
-    if (!current) {
-      alert("That open order no longer exists.");
-      editingOpenOrderKey = null;
-      return;
-    }
-
-    const updatedOrder = {
-      ...current,
-      items: clone(draftItems),
-      subtotal,
-      updatedAt: Date.now()
-    };
-
-    await set(ref(db, `hotdogLive/openOrders/${editingOpenOrderKey}`), updatedOrder);
-    draftItems = [];
-    builder = { category: null, data: {} };
-    editingDraftIndex = null;
-    editingOpenOrderKey = null;
-    renderBuilder();
-    renderReview();
-    renderDraft();
-    return;
-  }
-
-  const nextNumberRef = ref(db, "hotdogLive/meta/nextOrderNumber");
-  const txn = await runTransaction(nextNumberRef, current => current === null ? 2 : current + 1);
-  const orderNumber = txn.snapshot.val() - 1;
-
-  const newRef = push(ref(db, "hotdogLive/openOrders"));
-  const order = {
-    orderNumber,
-    createdAt: Date.now(),
-    createdLabel: nowLabel(),
-    status: "open",
-    subtotal,
-    items: clone(draftItems)
-  };
-
-  await set(newRef, order);
-
-  draftItems = [];
-  builder = { category: null, data: {} };
-  editingDraftIndex = null;
-  renderBuilder();
-  renderReview();
-  renderDraft();
-};
-
-window.loadOpenOrderForEdit = function (orderKey) {
-  const order = liveState.openOrders[orderKey];
-  if (!order) return;
-
-  draftItems = clone(order.items || []);
-  editingOpenOrderKey = orderKey;
-  editingDraftIndex = null;
-  builder = { category: null, data: {} };
-  renderBuilder();
-  renderReview();
-  renderDraft();
-  window.scrollTo({ top: 0, behavior: "smooth" });
-};
-
-window.removeOpenOrder = async function (orderKey) {
-  if (!confirm("Delete this open order?")) return;
-  await remove(ref(db, `hotdogLive/openOrders/${orderKey}`));
-
-  if (editingOpenOrderKey === orderKey) {
-    editingOpenOrderKey = null;
-    draftItems = [];
-    renderDraft();
-  }
-};
-
-async function moveOpenToPaid(orderKey, payment) {
-  const order = liveState.openOrders[orderKey];
-  if (!order) return;
-
-  const paidOrder = {
-    ...order,
-    status: "paid",
-    payment,
-    paidAt: Date.now(),
-    paidLabel: nowLabel()
-  };
-
-  await set(ref(db, `hotdogLive/paidOrders/${orderKey}`), paidOrder);
-  await remove(ref(db, `hotdogLive/openOrders/${orderKey}`));
-
-  if (editingOpenOrderKey === orderKey) {
-    editingOpenOrderKey = null;
-    draftItems = [];
-    renderDraft();
-  }
-}
-
-window.payOpenOrderCash = async function (orderKey) {
-  const order = liveState.openOrders[orderKey];
-  if (!order) return;
-
-  const amountGivenInput = prompt(`Order total is ${formatMoney(order.subtotal)}.\nEnter cash received:`);
-  if (amountGivenInput === null) return;
-
-  const amountGiven = Number(amountGivenInput);
-  if (Number.isNaN(amountGiven)) {
-    alert("Invalid number.");
-    return;
-  }
-  if (amountGiven < order.subtotal) {
-    alert(`Not enough cash. Need at least ${formatMoney(order.subtotal)}.`);
-    return;
-  }
-
-  const changeDue = Number((amountGiven - order.subtotal).toFixed(2));
-  alert(`Change due: ${formatMoney(changeDue)}`);
-
-  await moveOpenToPaid(orderKey, {
-    type: "cash",
-    total: order.subtotal,
-    cashReceived: amountGiven,
-    changeDue
-  });
-};
-
-window.payOpenOrderDigital = async function (orderKey) {
-  const order = liveState.openOrders[orderKey];
-  if (!order) return;
-
-  const method = prompt("Enter digital method exactly:\nCash App\nApple Pay\nSquare");
-  if (method === null) return;
-
-  const cleaned = method.trim();
-  if (!["Cash App", "Apple Pay", "Square"].includes(cleaned)) {
-    alert("Enter Cash App, Apple Pay, or Square exactly.");
-    return;
-  }
-
-  await moveOpenToPaid(orderKey, {
-    type: "digital",
-    method: cleaned,
-    total: order.subtotal
-  });
-};
-
-window.payOpenOrderSplit = async function (orderKey) {
-  const order = liveState.openOrders[orderKey];
-  if (!order) return;
-
-  const cashInput = prompt(`Order total is ${formatMoney(order.subtotal)}.\nEnter CASH amount:`);
-  if (cashInput === null) return;
-
-  const cashAmount = Number(cashInput);
-  if (Number.isNaN(cashAmount) || cashAmount < 0 || cashAmount > order.subtotal) {
-    alert("Invalid cash amount.");
-    return;
-  }
-
-  const digitalAmount = Number((order.subtotal - cashAmount).toFixed(2));
-  const method = prompt(`Digital amount is ${formatMoney(digitalAmount)}.\nEnter digital method exactly:\nCash App\nApple Pay\nSquare`);
-  if (method === null) return;
-
-  const cleaned = method.trim();
-  if (!["Cash App", "Apple Pay", "Square"].includes(cleaned)) {
-    alert("Enter Cash App, Apple Pay, or Square exactly.");
-    return;
-  }
-
-  let cashReceived = cashAmount;
-  let changeDue = 0;
-
-  if (cashAmount > 0) {
-    const receivedInput = prompt(`Cash portion is ${formatMoney(cashAmount)}.\nEnter cash received:`);
-    if (receivedInput === null) return;
-
-    cashReceived = Number(receivedInput);
-    if (Number.isNaN(cashReceived) || cashReceived < cashAmount) {
-      alert("Cash received must cover the cash portion.");
-      return;
-    }
-
-    changeDue = Number((cashReceived - cashAmount).toFixed(2));
-    alert(`Cash change due: ${formatMoney(changeDue)}`);
-  }
-
-  await moveOpenToPaid(orderKey, {
-    type: "split",
-    total: order.subtotal,
-    cashAmount,
-    cashReceived,
-    changeDue,
-    digitalAmount,
-    digitalMethod: cleaned
-  });
-};
-
-window.markPaidAsHandedOut = async function (orderKey) {
-  const order = liveState.paidOrders[orderKey];
-  if (!order) return;
-
-  const handed = {
-    ...order,
-    status: "handed_out",
-    handedOutAt: Date.now(),
-    handedOutLabel: nowLabel()
-  };
-
-  await set(ref(db, `hotdogLive/handedOutOrders/${orderKey}`), handed);
-  await remove(ref(db, `hotdogLive/paidOrders/${orderKey}`));
-};
-
-window.removePaidOrder = async function (orderKey) {
-  if (!confirm("Remove this paid order?")) return;
-  await remove(ref(db, `hotdogLive/paidOrders/${orderKey}`));
-};
-
-window.removeHandedOrder = async function (orderKey) {
-  if (!confirm("Remove this handed out order?")) return;
-  await remove(ref(db, `hotdogLive/handedOutOrders/${orderKey}`));
-};
-
-function renderOrderCard(orderKey, order, type) {
-  const statusClass =
-    type === "open" ? "status-open" :
-    type === "paid" ? "status-paid" :
-    "status-handed";
-
-  const statusText =
-    type === "open" ? "Open" :
-    type === "paid" ? "Paid" :
-    "Handed Out";
-
-  let actions = "";
-
-  if (type === "open") {
-    actions = `
-      <div class="order-actions">
-        <button type="button" class="action-btn" onclick="loadOpenOrderForEdit('${orderKey}')">Edit Order</button>
-        <button type="button" class="action-btn delete-btn" onclick="removeOpenOrder('${orderKey}')">Remove</button>
-        <button type="button" class="action-btn pay-cash" onclick="payOpenOrderCash('${orderKey}')">Pay Cash</button>
-        <button type="button" class="action-btn pay-digital" onclick="payOpenOrderDigital('${orderKey}')">Pay Digital</button>
-        <button type="button" class="action-btn pay-split" onclick="payOpenOrderSplit('${orderKey}')">Split</button>
-      </div>
-    `;
-  }
-
-  if (type === "paid") {
-    actions = `
-      <div class="order-actions">
-        <button type="button" class="action-btn mark-handed" onclick="markPaidAsHandedOut('${orderKey}')">Handed Out</button>
-        <button type="button" class="action-btn delete-btn" onclick="removePaidOrder('${orderKey}')">Remove</button>
-      </div>
-    `;
-  }
-
-  if (type === "handed") {
-    actions = `
-      <div class="order-actions">
-        <button type="button" class="action-btn delete-btn" onclick="removeHandedOrder('${orderKey}')">Remove</button>
-      </div>
-    `;
-  }
-
-  let paymentLines = "";
-  if (order.payment) {
-    if (order.payment.type === "cash") {
-      paymentLines = `
-        <p><strong>Cash:</strong> ${formatMoney(order.payment.total)}</p>
-        <p><strong>Given:</strong> ${formatMoney(order.payment.cashReceived)}</p>
-        <p><strong>Change:</strong> ${formatMoney(order.payment.changeDue)}</p>
-      `;
-    }
-    if (order.payment.type === "digital") {
-      paymentLines = `
-        <p><strong>Digital:</strong> ${order.payment.method}</p>
-        <p><strong>Total:</strong> ${formatMoney(order.payment.total)}</p>
-      `;
-    }
-    if (order.payment.type === "split") {
-      paymentLines = `
-        <p><strong>Cash:</strong> ${formatMoney(order.payment.cashAmount)}</p>
-        <p><strong>Given:</strong> ${formatMoney(order.payment.cashReceived)}</p>
-        <p><strong>Change:</strong> ${formatMoney(order.payment.changeDue)}</p>
-        <p><strong>Digital:</strong> ${order.payment.digitalMethod}</p>
-        <p><strong>Digital Amt:</strong> ${formatMoney(order.payment.digitalAmount)}</p>
-      `;
-    }
-  }
-
-  return `
-    <div class="order-card compact-card">
-      <span class="status-pill ${statusClass}">${statusText}</span>
-      <p class="for-label"><strong>For Adrian</strong></p>
-
-      <div class="order-card-head">
-        <div>
-          <p><strong>Order #${order.orderNumber}</strong></p>
-          <p>${type === "open" ? order.createdLabel : (order.paidLabel || order.handedOutLabel || "")}</p>
-        </div>
-        <div><strong>${formatMoney(order.subtotal)}</strong></div>
-      </div>
-
-      ${order.items.map(item => `
-        <div class="order-item compact-item">
-          <div>
-            <p><strong>${item.name}</strong></p>
-            ${item.lines.map(line => `<p>${line}</p>`).join("")}
-          </div>
-        </div>
-      `).join("")}
-
-      ${paymentLines}
-      ${actions}
-    </div>
-  `;
-}
-
-function renderLiveColumns() {
-  const openList = document.getElementById("openOrdersList");
-  const paidList = document.getElementById("paidOrdersList");
-  const handedList = document.getElementById("handedOrdersList");
-
-  const openEntries = Object.entries(liveState.openOrders || {}).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0));
-  const paidEntries = Object.entries(liveState.paidOrders || {}).sort((a, b) => (a[1].paidAt || 0) - (b[1].paidAt || 0));
-  const handedEntries = Object.entries(liveState.handedOutOrders || {})
-    .filter(([, order]) => {
-      const handedAt = Number(order.handedOutAt || 0);
-      return Date.now() - handedAt < 60000;
-    })
-    .sort((a, b) => (a[1].handedOutAt || 0) - (b[1].handedOutAt || 0));
-
-  openList.innerHTML = openEntries.length
-    ? openEntries.map(([key, order]) => renderOrderCard(key, order, "open")).join("")
-    : "<p>No open orders.</p>";
-
-  paidList.innerHTML = paidEntries.length
-    ? paidEntries.map(([key, order]) => renderOrderCard(key, order, "paid")).join("")
-    : "<p>No paid orders.</p>";
-
-  handedList.innerHTML = handedEntries.length
-    ? handedEntries.map(([key, order]) => renderOrderCard(key, order, "handed")).join("")
-    : "<p>No handed out orders.</p>";
-}
-
-function renderMainScreen() {
-  renderBuilder();
-  renderReview();
-  renderDraft();
-  renderLiveColumns();
-
-  const combinedOrders = {
-    ...liveState.paidOrders,
-    ...liveState.handedOutOrders
-  };
-  const totals = totalsFromOrders(combinedOrders);
-  const counts = getCountsFromOrders(combinedOrders);
-  const itemsSold = Object.values(counts).reduce((sum, n) => sum + n, 0);
-
-  document.getElementById("nextOrderNumber").textContent = liveState.meta.nextOrderNumber || 1;
-  document.getElementById("openCount").textContent = Object.keys(liveState.openOrders || {}).length;
-  document.getElementById("paidCount").textContent = Object.keys(liveState.paidOrders || {}).length;
-  document.getElementById("handedCount").textContent = Object.keys(liveState.handedOutOrders || {}).length;
-
-  document.getElementById("cashTotal").textContent = formatMoney(totals.cash);
-  document.getElementById("cashAppTotal").textContent = formatMoney(totals.cashApp);
-  document.getElementById("applePayTotal").textContent = formatMoney(totals.applePay);
-  document.getElementById("squareTotal").textContent = formatMoney(totals.square);
-  document.getElementById("dayTotal").textContent = formatMoney(totals.dayTotal);
-
-  document.getElementById("topSeller").textContent = getTopSeller(counts);
-  document.getElementById("itemsSoldCount").textContent = itemsSold;
-  document.getElementById("comboSoldCount").textContent = counts["Bacon Dog + Fries Combo"] || 0;
-
-  const itemCountsBox = document.getElementById("itemCountsBox");
-  const entries = Object.entries(counts).filter(([, count]) => count > 0);
-  itemCountsBox.innerHTML = entries.length
-    ? entries.map(([name, count]) => `<p><strong>${name}:</strong> ${count}</p>`).join("")
-    : "<p>No paid items yet.</p>";
-}
-
-function renderHistoryScreen() {
-  const daysList = document.getElementById("historyDaysList");
-  const detail = document.getElementById("historyDetail");
-  const detailTitle = document.getElementById("historyDetailTitle");
-
-  const dayEntries = Object.entries(liveState.days || {}).sort((a, b) => b[0].localeCompare(a[0]));
-
-  if (!dayEntries.length) {
-    daysList.innerHTML = "<p>No saved days yet.</p>";
-    detail.innerHTML = "<p>Select a day.</p>";
-    detailTitle.textContent = "Day Details";
-    return;
-  }
-
-  daysList.innerHTML = dayEntries.map(([dayKey, day]) => `
-    <div class="history-day-card">
-      <p><strong>${day.label || dayKey}</strong></p>
-      <p>Total: ${formatMoney(day.totals?.dayTotal || 0)}</p>
-      <p>Orders: ${[
-        ...Object.values(day.openOrders || {}),
-        ...Object.values(day.paidOrders || {}),
-        ...Object.values(day.handedOutOrders || {})
-      ].length}</p>
-      <div class="order-actions">
-        <button type="button" class="action-btn" onclick="selectHistoryDay('${dayKey}')">View Day</button>
-      </div>
-    </div>
-  `).join("");
-
-  if (!selectedHistoryDay || !liveState.days[selectedHistoryDay]) {
-    detail.innerHTML = "<p>Select a day.</p>";
-    detailTitle.textContent = "Day Details";
-    return;
-  }
-
-  const day = liveState.days[selectedHistoryDay];
-  detailTitle.textContent = `Day Details — ${day.label || selectedHistoryDay}`;
-
-  const allOrders = [
-    ...Object.entries(day.openOrders || {}).map(([k, v]) => ({ key: k, status: "Open", ...v })),
-    ...Object.entries(day.paidOrders || {}).map(([k, v]) => ({ key: k, status: "Paid", ...v })),
-    ...Object.entries(day.handedOutOrders || {}).map(([k, v]) => ({ key: k, status: "Handed Out", ...v }))
-  ].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-
-  detail.innerHTML = `
-    <div class="totals-box">
-      <div class="line"><span>Cash</span><strong>${formatMoney(day.totals?.cash || 0)}</strong></div>
-      <div class="line"><span>Cash App</span><strong>${formatMoney(day.totals?.cashApp || 0)}</strong></div>
-      <div class="line"><span>Apple Pay</span><strong>${formatMoney(day.totals?.applePay || 0)}</strong></div>
-      <div class="line"><span>Square</span><strong>${formatMoney(day.totals?.square || 0)}</strong></div>
-      <div class="line total-line"><span>Total</span><strong>${formatMoney(day.totals?.dayTotal || 0)}</strong></div>
-    </div>
-    ${allOrders.map(order => `
-      <div class="history-order-card">
-        <p><strong>Order #${order.orderNumber}</strong> — ${order.status}</p>
-        <p>${order.createdLabel || ""}</p>
-        ${order.items.map(item => `
-          <div class="order-item">
-            <div>
-              <p><strong>${item.name}</strong></p>
-              ${item.lines.map(line => `<p>${line}</p>`).join("")}
-              <p>${formatMoney(item.totalPrice)}</p>
-            </div>
-          </div>
-        `).join("")}
-        <p><strong>Subtotal:</strong> ${formatMoney(order.subtotal)}</p>
-        ${order.payment ? `
-          <p><strong>Payment Type:</strong> ${order.payment.type}</p>
-          ${order.payment.method ? `<p><strong>Digital Method:</strong> ${order.payment.method}</p>` : ""}
-          ${order.payment.digitalMethod ? `<p><strong>Digital Method:</strong> ${order.payment.digitalMethod}</p>` : ""}
-          ${order.payment.cashReceived !== undefined ? `<p><strong>Cash Received:</strong> ${formatMoney(order.payment.cashReceived)}</p>` : ""}
-          ${order.payment.changeDue !== undefined ? `<p><strong>Change Due:</strong> ${formatMoney(order.payment.changeDue)}</p>` : ""}
-        ` : ""}
-      </div>
-    `).join("")}
-  `;
-}
-
-window.saveDay = async function () {
-  const openCount = Object.keys(liveState.openOrders || {}).length;
-  if (openCount > 0) {
-    const proceed = confirm(`There are still ${openCount} open orders. Save day anyway and archive them too?`);
-    if (!proceed) return;
-  }
-
-  const combinedOrders = {
-    ...liveState.paidOrders,
-    ...liveState.handedOutOrders
-  };
-  const totals = totalsFromOrders(combinedOrders);
+  const date = state.currentDate;
+  await ensureDayNode(date);
+
+  const orderNumber = state.editingOrderId
+    ? (getCurrentDayNode().openOrders?.[state.editingOrderId]?.orderNumber || await nextOrderNumber(date))
+    : await nextOrderNumber(date);
 
   const payload = {
-    label: todayLabel(),
-    createdAt: Date.now(),
-    openOrders: clone(liveState.openOrders || {}),
-    paidOrders: clone(liveState.paidOrders || {}),
-    handedOutOrders: clone(liveState.handedOutOrders || {}),
-    totals
+    orderNumber,
+    customer: state.draft.customer.trim(),
+    payment: state.draft.payment,
+    items: state.draft.items,
+    total: Number(getDraftTotal().toFixed(2)),
+    startedAt: Date.now(),
+    createdAt: Date.now()
   };
 
-  await set(ref(db, `hotdogDays/${todayKey()}`), payload);
-  await set(ref(db, "hotdogLive/openOrders"), {});
-  await set(ref(db, "hotdogLive/paidOrders"), {});
-  await set(ref(db, "hotdogLive/handedOutOrders"), {});
-  await set(ref(db, "hotdogLive/meta/nextOrderNumber"), 1);
+  if (state.editingOrderId) {
+    await set(ref(db, `duckysTracker/days/${date}/openOrders/${state.editingOrderId}`), payload);
+  } else {
+    const newRef = push(ref(db, `duckysTracker/days/${date}/openOrders`));
+    await set(newRef, payload);
+  }
 
-  draftItems = [];
-  builder = { category: null, data: {} };
-  editingDraftIndex = null;
-  editingOpenOrderKey = null;
-  renderBuilder();
-  renderReview();
+  resetDraft();
+  setActiveScreen("open");
+}
+
+async function markOrderHandedOut(orderId) {
+  const order = getCurrentDayNode().openOrders?.[orderId];
+  if (!order) return;
+
+  const completedAt = Date.now();
+  const serviceSeconds = Math.max(0, Math.floor((completedAt - Number(order.startedAt || completedAt)) / 1000));
+
+  await set(ref(db, `duckysTracker/days/${state.currentDate}/completedOrders/${orderId}`), {
+    ...order,
+    completedAt,
+    serviceSeconds
+  });
+
+  await remove(ref(db, `duckysTracker/days/${state.currentDate}/openOrders/${orderId}`));
+}
+
+async function removeOpenOrder(orderId) {
+  const yes = confirm("Remove this order?");
+  if (!yes) return;
+  await remove(ref(db, `duckysTracker/days/${state.currentDate}/openOrders/${orderId}`));
+}
+
+async function editOpenOrder(orderId) {
+  const order = getCurrentDayNode().openOrders?.[orderId];
+  if (!order) return;
+
+  state.editingOrderId = orderId;
+  state.draft.customer = order.customer || "";
+  state.draft.payment = order.payment || "cash";
+  state.draft.items = JSON.parse(JSON.stringify(order.items || []));
+
+  await remove(ref(db, `duckysTracker/days/${state.currentDate}/openOrders/${orderId}`));
+
   renderDraft();
-  alert("Day saved.");
-};
+  setActiveScreen("build");
+}
 
-window.resetDay = async function () {
-  const proceed = confirm("Reset today without saving?");
-  if (!proceed) return;
-
-  await set(ref(db, "hotdogLive/openOrders"), {});
-  await set(ref(db, "hotdogLive/paidOrders"), {});
-  await set(ref(db, "hotdogLive/handedOutOrders"), {});
-  await set(ref(db, "hotdogLive/meta/nextOrderNumber"), 1);
-
-  draftItems = [];
-  builder = { category: null, data: {} };
-  editingDraftIndex = null;
-  editingOpenOrderKey = null;
-  renderBuilder();
-  renderReview();
+function resetDraft() {
+  state.editingOrderId = null;
+  state.draft = {
+    customer: "",
+    payment: "cash",
+    items: []
+  };
   renderDraft();
-  alert("Day reset.");
-};
+}
 
-function attachLiveListeners() {
-  onValue(ref(db, "hotdogLive/meta"), snap => {
-    liveState.meta = snap.val() || { nextOrderNumber: 1 };
-    renderScreen();
-  });
-
-  onValue(ref(db, "hotdogLive/openOrders"), snap => {
-    liveState.openOrders = snap.val() || {};
-    renderScreen();
-  });
-
-  onValue(ref(db, "hotdogLive/paidOrders"), snap => {
-    liveState.paidOrders = snap.val() || {};
-    renderScreen();
-  });
-
-  onValue(ref(db, "hotdogLive/handedOutOrders"), snap => {
-    liveState.handedOutOrders = snap.val() || {};
-    renderScreen();
-  });
-
-  onValue(ref(db, "hotdogDays"), snap => {
-    liveState.days = snap.val() || {};
-    renderScreen();
+// ---------- firebase watch ----------
+function bindDayWatcher() {
+  onValue(ref(db, "duckysTracker/days"), snapshot => {
+    state.allDays = snapshot.val() || {};
+    state.openOrders = getCurrentDayNode().openOrders || {};
+    state.completedOrders = getCurrentDayNode().completedOrders || {};
+    renderHomeSummary();
+    renderOpenOrders();
+    renderHandedOut();
+    renderStatsAndHistory();
   });
 }
 
-attachLiveListeners();
-renderScreen();
-setInterval(() => {
-  renderScreen();
-}, 5000);
+// ---------- events ----------
+function bindEvents() {
+  document.querySelectorAll("[data-go]").forEach(btn => {
+    btn.addEventListener("click", () => setActiveScreen(btn.dataset.go));
+  });
+
+  document.getElementById("workDate").addEventListener("change", async (e) => {
+    state.currentDate = e.target.value;
+    await ensureDayNode(state.currentDate);
+    renderHomeSummary();
+    renderOpenOrders();
+    renderHandedOut();
+    renderStatsAndHistory();
+  });
+
+  document.querySelectorAll(".item-btn").forEach(btn => {
+    btn.addEventListener("click", () => openItemBuilder(btn.dataset.item));
+  });
+
+  document.querySelectorAll(".pay-pill").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.draft.payment = btn.dataset.payment;
+      renderDraft();
+    });
+  });
+
+  document.getElementById("orderCustomer").addEventListener("input", e => {
+    state.draft.customer = e.target.value;
+  });
+
+  document.getElementById("clearDraftBtn").addEventListener("click", resetDraft);
+  document.getElementById("sendOrderBtn").addEventListener("click", sendDraftToOpenOrders);
+
+  document.getElementById("closeItemModalBtn").addEventListener("click", () => {
+    currentItemBuild = null;
+    document.getElementById("itemModal").classList.add("hidden");
+  });
+  document.getElementById("itemModalSaveBtn").addEventListener("click", saveBuiltItemToDraft);
+
+  document.getElementById("closeDayModalBtn").addEventListener("click", () => {
+    document.getElementById("dayModal").classList.add("hidden");
+  });
+
+  document.getElementById("saveDayBtn").addEventListener("click", async () => {
+    await ensureDayNode(state.currentDate);
+    alert(`Day ${formatDateForDisplay(state.currentDate)} is already being saved live. Use Stats / History to review it.`);
+  });
+
+  document.getElementById("viewDaysBtn").addEventListener("click", () => setActiveScreen("stats"));
+  document.getElementById("refreshHistoryBtn").addEventListener("click", renderStatsAndHistory);
+
+  document.getElementById("tipsInput").addEventListener("input", async e => {
+    await ensureDayNode(state.currentDate);
+    const tips = Number(e.target.value || 0);
+    await set(ref(db, `duckysTracker/days/${state.currentDate}/tips`), tips);
+  });
+
+  document.getElementById("itemModal").addEventListener("click", e => {
+    if (e.target.id === "itemModal") {
+      currentItemBuild = null;
+      document.getElementById("itemModal").classList.add("hidden");
+    }
+  });
+
+  document.getElementById("dayModal").addEventListener("click", e => {
+    if (e.target.id === "dayModal") {
+      document.getElementById("dayModal").classList.add("hidden");
+    }
+  });
+}
+
+// ---------- live intervals ----------
+function startLiveIntervals() {
+  if (openTimerInterval) clearInterval(openTimerInterval);
+  if (handedTimerInterval) clearInterval(handedTimerInterval);
+
+  openTimerInterval = setInterval(() => {
+    refreshOpenOrderTimers();
+  }, 1000);
+
+  handedTimerInterval = setInterval(() => {
+    renderHandedOut();
+  }, 1000);
+}
+
+// ---------- stats extras ----------
+function syncTipsFromDay() {
+  const tips = Number(state.allDays?.[state.currentDate]?.tips || 0);
+  document.getElementById("tipsInput").value = tips ? String(tips) : "";
+}
+
+// ---------- init ----------
+async function init() {
+  state.currentDate = todayLocalValue();
+  document.getElementById("workDate").value = state.currentDate;
+  await ensureDayNode(state.currentDate);
+
+  bindEvents();
+  bindDayWatcher();
+  renderDraft();
+  startLiveIntervals();
+
+  onValue(ref(db, `duckysTracker/days/${state.currentDate}/tips`), snapshot => {
+    document.getElementById("tipsInput").value = snapshot.exists() ? String(snapshot.val()) : "";
+  });
+}
+
+init();
