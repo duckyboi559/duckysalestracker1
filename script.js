@@ -619,17 +619,6 @@ function saveBuiltItemToDraft() {
   renderDraft();
 }
 
-  if (currentItemBuild.editIndex === null) {
-    state.draft.items.push(builtItem);
-  } else {
-    state.draft.items[currentItemBuild.editIndex] = builtItem;
-  }
-
-  currentItemBuild = null;
-  document.getElementById("itemModal").classList.add("hidden");
-  renderDraft();
-}
-
 // ---------- orders ----------
 async function sendDraftToOpenOrders() {
   if (!state.draft.items.length) {
