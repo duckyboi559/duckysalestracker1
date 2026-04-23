@@ -52,8 +52,6 @@ const SCREENS = ["home", "build", "open", "handed", "stats"];
 const state = {
   currentDate: "",
   allDays: {},
-  openOrders: {},
-  completedOrders: {},
   editingOrderId: null,
   draft: {
     customer: "",
@@ -65,6 +63,7 @@ const state = {
 let openTimerInterval = null;
 let handedTimerInterval = null;
 let currentItemBuild = null;
+let daysUnsubscribe = null;
 
 // ---------- helpers ----------
 function money(v) {
@@ -95,7 +94,12 @@ function getDraftTotal() {
 }
 
 function getCurrentDayNode() {
-  return state.allDays[state.currentDate] || { openOrders: {}, completedOrders: {} };
+  return state.allDays[state.currentDate] || {
+    date: state.currentDate,
+    openOrders: {},
+    completedOrders: {},
+    orderCounter: 0
+  };
 }
 
 function getOpenOrdersArray() {
@@ -123,7 +127,7 @@ function buildItemCounts(orders) {
   const counts = {};
   orders.forEach(order => {
     (order.items || []).forEach(item => {
-      counts[item.name] = (counts[item.name] || 0) + 1;
+      counts[item.name] = (counts[item.name] || 0) + Number(item.quantity || 1);
     });
   });
   return counts;
@@ -189,11 +193,11 @@ function renderDraft() {
     state.draft.items.forEach((item, index) => {
       const box = document.createElement("div");
       box.className = "draft-item";
-     box.innerHTML = `
-  <div class="draft-item-top">
-    <span>${item.quantity || 1}x ${item.name}</span>
-    <span>${money(item.lineTotal)}</span>
-  </div>
+      box.innerHTML = `
+        <div class="draft-item-top">
+          <span>${item.quantity || 1}x ${item.name}</span>
+          <span>${money(item.lineTotal)}</span>
+        </div>
         ${item.selected?.length ? `<div class="draft-item-sub">Toppings: ${item.selected.join(", ")}</div>` : ""}
         ${item.addons?.length ? `<div class="draft-item-sub">Add-ons: ${item.addons.join(", ")}</div>` : ""}
         ${item.note ? `<div class="draft-item-sub">Note: ${item.note}</div>` : ""}
@@ -312,7 +316,7 @@ function renderHandedOut() {
 function renderItemsHtml(items = []) {
   let html = "<ul>";
   items.forEach(item => {
-html += `<li><strong>${item.quantity || 1}x ${item.name}</strong> — ${money(item.lineTotal)}`;
+    html += `<li><strong>${item.quantity || 1}x ${item.name}</strong> — ${money(item.lineTotal)}`;
     if (item.selected?.length) html += `<br><small>Toppings: ${item.selected.join(", ")}</small>`;
     if (item.addons?.length) html += `<br><small>Add-ons: ${item.addons.join(", ")}</small>`;
     if (item.note) html += `<br><small>Note: ${item.note}</small>`;
@@ -448,34 +452,33 @@ function openItemBuilder(itemKey) {
   if (!def) return;
 
   currentItemBuild = {
-  editIndex: null,
-  key: itemKey,
-  name: def.name,
-  basePrice: def.price,
-  type: def.type,
-  quantity: 1,
-  selected: [],
-  addons: [],
-  note: ""
-};
-  
+    editIndex: null,
+    key: itemKey,
+    name: def.name,
+    basePrice: def.price,
+    type: def.type,
+    quantity: 1,
+    selected: [],
+    addons: [],
+    note: ""
+  };
 
   renderItemBuilder();
 }
 
 function openItemBuilderFromExisting(index) {
   const item = state.draft.items[index];
- currentItemBuild = {
-  editIndex: index,
-  key: item.key || null,
-  name: item.name,
-  basePrice: item.basePrice,
-  type: item.type,
-  quantity: item.quantity || 1,
-  selected: [...(item.selected || [])],
-  addons: [...(item.addons || [])],
-  note: item.note || ""
-};
+  currentItemBuild = {
+    editIndex: index,
+    key: item.key || null,
+    name: item.name,
+    basePrice: item.basePrice,
+    type: item.type,
+    quantity: item.quantity || 1,
+    selected: [...(item.selected || [])],
+    addons: [...(item.addons || [])],
+    note: item.note || ""
+  };
   renderItemBuilder();
 }
 
@@ -629,48 +632,45 @@ async function sendDraftToOpenOrders() {
   const date = state.currentDate;
   await ensureDayNode(date);
 
+  let orderId = state.editingOrderId;
+  let startedAt = Date.now();
+
+  if (orderId) {
+    const oldOrder = getCurrentDayNode().openOrders?.[orderId];
+    if (oldOrder?.startedAt) startedAt = oldOrder.startedAt;
+  }
+
   const orderNumber = state.editingOrderId
     ? (getCurrentDayNode().openOrders?.[state.editingOrderId]?.orderNumber || await nextOrderNumber(date))
     : await nextOrderNumber(date);
 
   const payload = {
+    id: orderId || "",
     orderNumber,
     customer: state.draft.customer.trim(),
     payment: state.draft.payment,
     items: state.draft.items,
     total: Number(getDraftTotal().toFixed(2)),
-    startedAt: Date.now(),
-    createdAt: Date.now()
+    startedAt,
+    createdAt: startedAt
   };
 
-  let orderId = state.editingOrderId;
-
   if (orderId) {
+    payload.id = orderId;
     await set(ref(db, `duckysTracker/days/${date}/openOrders/${orderId}`), payload);
   } else {
     const newRef = push(ref(db, `duckysTracker/days/${date}/openOrders`));
     orderId = newRef.key;
+    payload.id = orderId;
     await set(newRef, payload);
   }
-
-  // optimistic local update so it shows immediately
-  if (!state.allDays[date]) {
-    state.allDays[date] = {
-      date,
-      openOrders: {},
-      completedOrders: {},
-      orderCounter: orderNumber
-    };
-  }
-
-  if (!state.allDays[date].openOrders) state.allDays[date].openOrders = {};
-  state.allDays[date].openOrders[orderId] = payload;
 
   resetDraft();
   renderHomeSummary();
   renderOpenOrders();
   setActiveScreen("open");
 }
+
 async function markOrderHandedOut(orderId) {
   const order = getCurrentDayNode().openOrders?.[orderId];
   if (!order) return;
@@ -720,16 +720,15 @@ function resetDraft() {
 
 // ---------- firebase watch ----------
 function bindDayWatcher() {
-onValue(ref(db, "duckysTracker/days"), snapshot => {
-  state.allDays = snapshot.val() || {};
-  state.openOrders = getCurrentDayNode().openOrders || {};
-  state.completedOrders = getCurrentDayNode().completedOrders || {};
-  syncTipsFromDay();
-  renderHomeSummary();
-  renderOpenOrders();
-  renderHandedOut();
-  renderStatsAndHistory();
-});
+  if (daysUnsubscribe) daysUnsubscribe();
+
+  daysUnsubscribe = onValue(ref(db, "duckysTracker/days"), snapshot => {
+    state.allDays = snapshot.val() || {};
+    renderHomeSummary();
+    renderOpenOrders();
+    renderHandedOut();
+    renderStatsAndHistory();
+  });
 }
 
 // ---------- events ----------
@@ -738,15 +737,14 @@ function bindEvents() {
     btn.addEventListener("click", () => setActiveScreen(btn.dataset.go));
   });
 
- document.getElementById("workDate").addEventListener("change", async (e) => {
-  state.currentDate = e.target.value;
-  await ensureDayNode(state.currentDate);
-  syncTipsFromDay();
-  renderHomeSummary();
-  renderOpenOrders();
-  renderHandedOut();
-  renderStatsAndHistory();
-});
+  document.getElementById("workDate").addEventListener("change", async (e) => {
+    state.currentDate = e.target.value;
+    await ensureDayNode(state.currentDate);
+    renderHomeSummary();
+    renderOpenOrders();
+    renderHandedOut();
+    renderStatsAndHistory();
+  });
 
   document.querySelectorAll(".item-btn").forEach(btn => {
     btn.addEventListener("click", () => openItemBuilder(btn.dataset.item));
@@ -774,20 +772,6 @@ function bindEvents() {
 
   document.getElementById("closeDayModalBtn").addEventListener("click", () => {
     document.getElementById("dayModal").classList.add("hidden");
-  });
-
-  document.getElementById("saveDayBtn").addEventListener("click", async () => {
-    await ensureDayNode(state.currentDate);
-    alert(`Day ${formatDateForDisplay(state.currentDate)} is already being saved live. Use Stats / History to review it.`);
-  });
-
-  document.getElementById("viewDaysBtn").addEventListener("click", () => setActiveScreen("stats"));
-  document.getElementById("refreshHistoryBtn").addEventListener("click", renderStatsAndHistory);
-
-  document.getElementById("tipsInput").addEventListener("input", async e => {
-    await ensureDayNode(state.currentDate);
-    const tips = Number(e.target.value || 0);
-    await set(ref(db, `duckysTracker/days/${state.currentDate}/tips`), tips);
   });
 
   document.getElementById("itemModal").addEventListener("click", e => {
@@ -818,12 +802,6 @@ function startLiveIntervals() {
   }, 1000);
 }
 
-// ---------- stats extras ----------
-function syncTipsFromDay() {
-  const tips = Number(state.allDays?.[state.currentDate]?.tips || 0);
-  document.getElementById("tipsInput").value = tips ? String(tips) : "";
-}
-
 // ---------- init ----------
 async function init() {
   state.currentDate = todayLocalValue();
@@ -834,10 +812,6 @@ async function init() {
   bindDayWatcher();
   renderDraft();
   startLiveIntervals();
-
-  onValue(ref(db, `duckysTracker/days/${state.currentDate}/tips`), snapshot => {
-    document.getElementById("tipsInput").value = snapshot.exists() ? String(snapshot.val()) : "";
-  });
 }
 
 init();
