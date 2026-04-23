@@ -173,6 +173,8 @@ textarea {
   gap: 12px;
   align-items: center;
   margin-bottom: 14px;
+  justify-content: space-between;
+  flex-wrap: wrap;
 }
 
 .back-btn,
