@@ -16,15 +16,14 @@ import {
 
 // PASTE YOUR FIREBASE CONFIG HERE
 const firebaseConfig = {
-  apiKey: "PASTE_YOUR_API_KEY",
-  authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://PASTE_YOUR_DATABASE_URL.firebaseio.com",
-  projectId: "PASTE_YOUR_PROJECT_ID",
-  storageBucket: "PASTE_YOUR_PROJECT.appspot.com",
-  messagingSenderId: "PASTE_YOUR_SENDER_ID",
-  appId: "PASTE_YOUR_APP_ID"
+  apiKey: "AIzaSyDMhniu1SEmiIWoXzwJy6zVSOZkHELhfLc",
+  authDomain: "family-sales.firebaseapp.com",
+  databaseURL: "https://family-sales-default-rtdb.firebaseio.com",
+  projectId: "family-sales",
+  storageBucket: "family-sales.firebasestorage.app",
+  messagingSenderId: "590845027956",
+  appId: "1:590845027956:web:676df074fe6150e8d39321"
 };
-
 // You can rename this path if you want separate dashboards.
 const DATABASE_PATH = "personalSavingsDashboard/main";
 
