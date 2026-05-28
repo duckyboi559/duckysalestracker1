@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Personal Savings Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="background-glow"></div>
+
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Personal Money Dashboard</p>
+        <h1>Build Your Money Up</h1>
+        <p class="subtitle">Split today’s money, track your goals, and watch your progress grow.</p>
+      </div>
+
+      <div class="status-pill" id="syncStatus">Connecting...</div>
+    </header>
+
+    <section class="hero-card">
+      <div>
+        <p class="hero-label">Total Saved</p>
+        <h2 id="totalSaved">$0.00</h2>
+        <p class="hero-small">Car + Personal + Restock + Emergency</p>
+      </div>
+
+      <div class="hero-actions">
+        <button id="resetDailyBtn" class="ghost-btn">Clear Daily Form</button>
+        <button id="resetAllBtn" class="danger-btn">Reset All</button>
+      </div>
+    </section>
+
+    <section class="cards-row">
+      <div class="money-card">
+        <span>🚗</span>
+        <p>Car Goal</p>
+        <h3 id="carTotal">$0.00</h3>
+      </div>
+
+      <div class="money-card">
+        <span>💰</span>
+        <p>Personal Savings</p>
+        <h3 id="savingsTotal">$0.00</h3>
+      </div>
+
+      <div class="money-card">
+        <span>🌭</span>
+        <p>Business Restock</p>
+        <h3 id="restockTotal">$0.00</h3>
+      </div>
+
+      <div class="money-card">
+        <span>🛟</span>
+        <p>Emergency Money</p>
+        <h3 id="emergencyTotal">$0.00</h3>
+      </div>
+    </section>
+
+    <main class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <p class="section-kicker">Daily Split</p>
+            <h2>Enter Today’s Money</h2>
+          </div>
+          <span class="mini-badge">Live Save</span>
+        </div>
+
+        <label>Today I made</label>
+        <input type="number" id="dailyMade" placeholder="Example: 180" />
+
+        <div class="split-grid">
+          <div>
+            <label>Car Goal</label>
+            <input type="number" id="carInput" placeholder="0" />
+          </div>
+
+          <div>
+            <label>Personal Savings</label>
+            <input type="number" id="savingsInput" placeholder="0" />
+          </div>
+
+          <div>
+            <label>Business Restock</label>
+            <input type="number" id="restockInput" placeholder="0" />
+          </div>
+
+          <div>
+            <label>Emergency Money</label>
+            <input type="number" id="emergencyInput" placeholder="0" />
+          </div>
+
+          <div class="full">
+            <label>Daily Spending From Today’s Money</label>
+            <input type="number" id="spendingInput" placeholder="0" />
+          </div>
+        </div>
+
+        <div class="remaining-card">
+          <p>Remaining to assign</p>
+          <h2 id="remainingAmount">$0.00</h2>
+        </div>
+
+        <button id="saveTodayBtn" class="primary-btn">Save Today’s Split</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <p class="section-kicker">Main Goal</p>
+            <h2>Car Goal</h2>
+          </div>
+        </div>
+
+        <label>Car Goal Amount</label>
+        <input type="number" id="carGoalAmount" placeholder="Example: 8000" />
+
+        <div class="goal-info">
+          <div>
+            <p>Saved</p>
+            <strong id="carSavedText">$0.00</strong>
+          </div>
+
+          <div>
+            <p>Left</p>
+            <strong id="carLeftText">$0.00</strong>
+          </div>
+
+          <div>
+            <p>Done</p>
+            <strong id="carPercentText">0%</strong>
+          </div>
+        </div>
+
+        <div class="progress-track">
+          <div id="carProgressBar"></div>
+        </div>
+
+        <p id="predictionText" class="prediction">Save at least two days toward your car goal to see a prediction.</p>
+
+        <canvas id="carChart"></canvas>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <p class="section-kicker">Spending</p>
+            <h2>Daily Spending</h2>
+          </div>
+        </div>
+
+        <div class="spending-form">
+          <input type="text" id="spendingName" placeholder="Snacks, food, gas, random stuff..." />
+          <input type="number" id="spendingAmount" placeholder="$" />
+          <button id="addSpendingBtn" class="primary-btn">Add Spending</button>
+        </div>
+
+        <div class="weekly-spend-card">
+          <p>This Week’s Spending</p>
+          <h2 id="weeklySpending">$0.00</h2>
+        </div>
+
+        <ul id="spendingList" class="list"></ul>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <div>
+            <p class="section-kicker">History</p>
+            <h2>Recent Saves</h2>
+          </div>
+        </div>
+
+        <ul id="historyList" class="list"></ul>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
