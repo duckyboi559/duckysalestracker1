@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Personal Savings Dashboard V2</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page-glow"></div>
+
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Personal Money Dashboard</p>
+        <h1>Build Your Money Up</h1>
+        <p class="subtitle">Split your money, save for your car, keep wallet cash, and track where your spending goes.</p>
+      </div>
+      <div class="top-actions">
+        <span id="syncStatus" class="status-pill">Connecting...</span>
+        <button id="resetAllBtn" class="danger-btn">Reset All</button>
+      </div>
+    </header>
+
+    <section class="hero-card">
+      <div>
+        <p class="hero-label">Total Money Tracked</p>
+        <h2 id="totalTracked">$0.00</h2>
+        <p class="hero-small">Car + Savings + Restock + Emergency + Wallet Cash</p>
+      </div>
+      <div class="hero-stats">
+        <div><p>This Week Spent</p><strong id="weekSpentHero">$0.00</strong></div>
+        <div><p>This Month Spent</p><strong id="monthSpentHero">$0.00</strong></div>
+        <div><p>Restocks Done</p><strong id="completedRestocksHero">0</strong></div>
+      </div>
+    </section>
+
+    <section class="cards-row">
+      <div class="money-card red-card"><span>🚗</span><p>Car Goal</p><h3 id="carTotal">$0.00</h3></div>
+      <div class="money-card"><span>💰</span><p>Personal Savings</p><h3 id="savingsTotal">$0.00</h3></div>
+      <div class="money-card"><span>🌭</span><p>Restock Fund</p><h3 id="restockTotal">$0.00</h3><small id="restockProgressText">$0.00 / $270.00</small></div>
+      <div class="money-card"><span>🛟</span><p>Emergency Fund</p><h3 id="emergencyTotal">$0.00</h3></div>
+      <div class="money-card green-card"><span>💵</span><p>Wallet Cash</p><h3 id="walletTotal">$0.00</h3></div>
+    </section>
+
+    <main class="dashboard-grid">
+      <section class="panel span-2">
+        <div class="panel-title">
+          <div><p class="section-kicker">Daily Split</p><h2>Enter Today’s Money</h2></div>
+          <button id="clearDailyBtn" class="ghost-btn">Clear Form</button>
+        </div>
+
+        <label for="dailyMade">Today I Made</label>
+        <input type="number" id="dailyMade" placeholder="Example: 154" />
+
+        <div class="split-grid">
+          <div><label for="carInput">Car Goal</label><input type="number" id="carInput" placeholder="0" /></div>
+          <div><label for="savingsInput">Personal Savings</label><input type="number" id="savingsInput" placeholder="0" /></div>
+          <div><label for="restockInput">Business Restock</label><input type="number" id="restockInput" placeholder="0" /></div>
+          <div><label for="emergencyInput">Emergency Money</label><input type="number" id="emergencyInput" placeholder="0" /></div>
+          <div><label for="walletInput">Wallet Cash</label><input type="number" id="walletInput" placeholder="0" /></div>
+        </div>
+
+        <div class="remaining-card"><p>Remaining to assign</p><h2 id="remainingAmount">$0.00</h2></div>
+        <button id="saveTodayBtn" class="primary-btn">Save Today’s Split</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title"><div><p class="section-kicker">Main Goal</p><h2>Car Goal</h2></div></div>
+        <label for="carGoalAmount">Car Goal Amount</label>
+        <input type="number" id="carGoalAmount" placeholder="Example: 8000" />
+        <div class="goal-info">
+          <div><p>Saved</p><strong id="carSavedText">$0.00</strong></div>
+          <div><p>Left</p><strong id="carLeftText">$0.00</strong></div>
+          <div><p>Done</p><strong id="carPercentText">0%</strong></div>
+        </div>
+        <div class="progress-track"><div id="carProgressBar"></div></div>
+        <p id="predictionText" class="prediction">Save at least two days toward your car goal to see a prediction.</p>
+        <canvas id="carChart"></canvas>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title"><div><p class="section-kicker">Restock Cycle</p><h2>Restock Fund</h2></div></div>
+        <div class="restock-box"><p>Restock Goal</p><h2 id="restockGoalText">$270.00</h2></div>
+        <div class="progress-track"><div id="restockProgressBar"></div></div>
+        <div class="goal-info two">
+          <div><p>Current Cycle</p><strong id="restockSavedText">$0.00</strong></div>
+          <div><p>Completed</p><strong id="completedRestocksText">0</strong></div>
+        </div>
+        <p class="help-text">When this hits $270, it counts one completed restock and rolls extra money into the next cycle.</p>
+      </section>
+
+      <section class="panel span-2">
+        <div class="panel-title"><div><p class="section-kicker">Spending Tracker</p><h2>Track What You Buy</h2></div></div>
+        <div class="spending-grid">
+          <div><label for="spendingName">What did you buy?</label><input type="text" id="spendingName" placeholder="Hot Cheetos, food, gas..." /></div>
+          <div><label for="spendingAmount">Amount</label><input type="number" id="spendingAmount" placeholder="0" /></div>
+          <div><label for="spendingCategory">Category</label><select id="spendingCategory"><option value="Snacks">Snacks</option><option value="Food">Food</option><option value="Gas">Gas</option><option value="Drinks">Drinks</option><option value="Business">Business</option><option value="Random">Random</option><option value="Other">Other</option></select></div>
+          <div><label for="paidFrom">Paid From</label><select id="paidFrom"><option value="wallet">Wallet Cash</option><option value="savings">Personal Savings</option><option value="emergency">Emergency Fund</option><option value="restock">Restock Fund</option></select></div>
+        </div>
+        <button id="addSpendingBtn" class="primary-btn">Add Spending</button>
+        <div class="analytics-row">
+          <div class="analytics-card"><p>This Week</p><h3 id="weeklySpending">$0.00</h3></div>
+          <div class="analytics-card"><p>This Month</p><h3 id="monthlySpending">$0.00</h3></div>
+          <div class="analytics-card"><p>Snacks This Month</p><h3 id="monthlySnacks">$0.00</h3></div>
+        </div>
+        <div class="category-list" id="categoryTotals"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title"><div><p class="section-kicker">Spending History</p><h2>Recent Spending</h2></div></div>
+        <ul id="spendingList" class="list"></ul>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title"><div><p class="section-kicker">Save History</p><h2>Recent Money Splits</h2></div></div>
+        <ul id="historyList" class="list"></ul>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
