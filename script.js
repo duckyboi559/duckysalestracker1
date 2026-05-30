@@ -11,7 +11,6 @@ const firebaseConfig = {
   appId: "1:590845027956:web:676df074fe6150e8d39321"
 };
 
-};
 
 const DATABASE_PATH = "personalSavingsDashboard/v2";
 const RESTOCK_GOAL = 270;
