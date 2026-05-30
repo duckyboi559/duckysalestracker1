@@ -2,13 +2,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 const firebaseConfig = {
-  apiKey: "PASTE_YOUR_API_KEY",
+  apiKey: "AIzaSyDMhniu1SEmiIWoXzwJy6zVSOZkHELhfLc",
   authDomain: "family-sales.firebaseapp.com",
   databaseURL: "https://family-sales-default-rtdb.firebaseio.com",
   projectId: "family-sales",
   storageBucket: "family-sales.firebasestorage.app",
   messagingSenderId: "590845027956",
-  appId: "PASTE_YOUR_APP_ID"
+  appId: "1:590845027956:web:676df074fe6150e8d39321"
+};
+
 };
 
 const DATABASE_PATH = "personalSavingsDashboard/v2";
